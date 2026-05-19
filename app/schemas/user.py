@@ -6,7 +6,6 @@ from app.domain.user import UserRole
 
 
 class UserResponse(BaseModel):
-    """Representasi user yang aman ditampilkan ke client (tanpa password)."""
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int

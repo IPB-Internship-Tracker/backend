@@ -1,6 +1,6 @@
 """
 Exception khusus untuk pelanggaran aturan bisnis di domain.
-Route layer akan menangkap ini dan mengubahnya jadi HTTPException.
+Route layer akan nangkep ini dan mengubahnya jadi HTTPException.
 """
 
 

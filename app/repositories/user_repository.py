@@ -1,5 +1,5 @@
 """
-Repository: satu-satunya layer yang boleh akses ORM.
+Repository: layer yang boleh akses ORM.
 Tugasnya: konversi bolak-balik antara UserORM <-> User (domain).
 """
 from sqlalchemy.orm import Session

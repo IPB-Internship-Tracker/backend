@@ -1,6 +1,6 @@
 """
 Domain entity: User.
-Tidak ada import SQLAlchemy di sini — murni logic bisnis.
+Cuman logic bisnis.
 """
 import enum
 from dataclasses import dataclass, field

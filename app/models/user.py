@@ -1,5 +1,5 @@
 """
-ORM layer — hanya kolom database, tidak ada method bisnis.
+ORM layer hanya kolom database, tidak ada method bisnis.
 Business logic ada di app.domain.user.User.
 """
 from datetime import datetime

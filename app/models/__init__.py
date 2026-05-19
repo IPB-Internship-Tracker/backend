@@ -1,5 +1,5 @@
 """
-ORM layer — kumpulan SQLAlchemy model untuk persistence.
+ORM layer, kumpulan SQLAlchemy model untuk persistence.
 NOTE: Semua class ORM di-suffix dengan `ORM` untuk membedakan dengan domain.
 Business logic ada di app.domain, BUKAN di sini.
 """

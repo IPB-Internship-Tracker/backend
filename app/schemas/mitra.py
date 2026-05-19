@@ -3,7 +3,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from app.schemas.user import UserResponse
 
 
-# Domain yang tidak diperbolehkan untuk mitra (email perusahaan, bukan email konsumer).
 _BLOCKED_MITRA_DOMAINS = {"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com"}
 
 

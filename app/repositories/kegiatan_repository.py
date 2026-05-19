@@ -1,6 +1,6 @@
 """
 Repository polymorphic untuk KegiatanMBKM + Magang + Lomba + StudiIndependen.
-Konversi dua arah antara ORM (dgn hirarki joined-table inheritance) dan Domain.
+Ini convert dua arah antara ORM (dgn hirarki joined-table inheritance) dan Domain.
 """
 from sqlalchemy.orm import Session
 

@@ -2,6 +2,7 @@
 Domain entity: KegiatanMBKM + subclass (Magang, Lomba, StudiIndependen).
 Inheritance di level domain. Tidak ada SQLAlchemy.
 """
+
 import enum
 from dataclasses import dataclass, field
 from datetime import date

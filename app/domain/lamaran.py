@@ -1,7 +1,8 @@
 """
 Domain entity: Lamaran.
-Berisi business rule paling penting: aturan perubahan status.
+Business rule: aturan perubahan status.
 """
+
 import enum
 from dataclasses import dataclass
 from datetime import date
