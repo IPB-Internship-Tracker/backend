@@ -1,0 +1,58 @@
+volumes:
+  databaseVolume:
+
+services:
+  database:
+    image: postgres:alpine
+    restart: on-failure
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+    ports:
+      - "${DB_PORT}:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+
+    volumes:
+      - databaseVolume:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      target: build
+
+    entrypoint: sh "/entrypoint.sh"
+
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      ALGORITHM: ${ALGORITHM}
+      POETRY_CACHE_DIR: '/tmp/'
+      WAIT_FOR_DB: 1
+
+    ports:
+      - "${PORT:-8000}:80"
+
+    volumes:
+      - ./app:/opt/project/app
+      - ./Makefile:/opt/project/Makefile
+      - ./pyproject.toml:/opt/project/pyproject.toml
+      - ./poetry.lock:/opt/project/poetry.lock
+      - ./setup.cfg:/opt/project/setup.cfg
+
+    depends_on:
+      database:
+        condition: service_healthy
+
+    command: "uvicorn app.main:app --host 0.0.0.0 --port 80"

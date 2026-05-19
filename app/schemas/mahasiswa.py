@@ -1,0 +1,67 @@
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.schemas.user import UserResponse
+
+
+IPB_STUDENT_DOMAIN = "@apps.ipb.ac.id"
+
+
+class _MahasiswaBase(BaseModel):
+    nama: str = Field(min_length=2, max_length=150)
+    nim: str = Field(min_length=11, max_length=11, description="NIM IPB format: 1 huruf + 10 angka, contoh: G6401231033")
+    fakultas: str = Field(min_length=2, max_length=100)
+    program_studi: str = Field(min_length=2, max_length=100)
+    angkatan: int = Field(ge=2022, le=2026)
+
+
+class MahasiswaRegister(_MahasiswaBase):
+    """Payload untuk register mahasiswa (gabungan user + mahasiswa)."""
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=10, description="Password 8-10 karakter: huruf, angka, atau simbol")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def email_to_lowercase(cls, v: str) -> str:
+        """Ensure email selalu lowercase."""
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_harus_apps_ipb(cls, v: str) -> str:
+        if not v.endswith(IPB_STUDENT_DOMAIN):
+            raise ValueError(f"Email mahasiswa harus menggunakan domain {IPB_STUDENT_DOMAIN}")
+        return v
+
+    @field_validator("nim")
+    @classmethod
+    def nim_format_ipb(cls, v: str) -> str:
+        """Validasi NIM IPB: 1 huruf + 10 angka."""
+        v = v.upper()
+        if len(v) != 11:
+            raise ValueError("NIM IPB harus 11 karakter (1 huruf + 10 angka)")
+        if not v[0].isalpha():
+            raise ValueError("Karakter pertama NIM harus huruf")
+        if not v[1:].isdigit():
+            raise ValueError("10 karakter terakhir NIM harus angka")
+        return v
+
+
+class MahasiswaUpdate(BaseModel):
+    nama: str | None = Field(default=None, min_length=2, max_length=150)
+    fakultas: str | None = Field(default=None, min_length=2, max_length=100)
+    program_studi: str | None = Field(default=None, min_length=2, max_length=100)
+    angkatan: int | None = Field(default=None, ge=2022, le=2026)
+
+
+class MahasiswaResponse(_MahasiswaBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    mahasiswa_id: int
+    user_id: int
+
+
+class MahasiswaDetailResponse(MahasiswaResponse):
+    """Response lengkap dengan data user (untuk /me endpoint)."""
+    user: UserResponse
