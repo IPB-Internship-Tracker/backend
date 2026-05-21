@@ -26,3 +26,17 @@ class Mitra:
             self.alamat = alamat
         if kontak is not None:
             self.kontak = kontak
+
+    def update_profil(
+        self,
+        nama_instansi: str | None = None,
+        jenis_instansi: str | None = None,
+        alamat: str | None = None,
+        kontak: str | None = None,
+    ) -> None:
+        self.perbarui_profil(
+            nama_instansi=nama_instansi,
+            jenis_instansi=jenis_instansi,
+            alamat=alamat,
+            kontak=kontak,
+        )
