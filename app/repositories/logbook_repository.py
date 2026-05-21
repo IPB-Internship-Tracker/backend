@@ -25,6 +25,9 @@ class LogbookRepository:
         orm = self.db.get(LogbookORM, logbook_id)
         return self._to_domain(orm) if orm else None
 
+    def get_logbook_by_id(self, logbook_id: int) -> Logbook | None:
+        return self.get(logbook_id)
+
     def list_by_lamaran(self, lamaran_id: int) -> list[Logbook]:
         q = (
             self.db.query(LogbookORM)
@@ -32,6 +35,9 @@ class LogbookRepository:
             .order_by(LogbookORM.tanggal.desc())
         )
         return [self._to_domain(o) for o in q.all()]
+
+    def get_logbook_by_lamaran(self, lamaran_id: int) -> list[Logbook]:
+        return self.list_by_lamaran(lamaran_id)
 
     def buat(self, logbook: Logbook) -> Logbook:
         orm = LogbookORM(

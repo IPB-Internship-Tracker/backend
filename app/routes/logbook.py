@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +9,7 @@ from app.domain.logbook import Logbook
 from app.domain.mahasiswa import Mahasiswa
 from app.repositories import LamaranRepository, LogbookRepository
 from app.schemas import LogbookCreate, LogbookResponse, LogbookUpdate
+from app.uploads import IMAGE_EXTENSIONS, save_upload_file
 
 
 router = APIRouter(prefix="/logbook", tags=["logbook"])
@@ -59,6 +60,32 @@ def tambah_logbook(
     return logbook
 
 
+@router.post("/lamaran/{lamaran_id}/upload-foto")
+def upload_foto_logbook(
+    lamaran_id: int,
+    file: UploadFile = File(...),
+    mahasiswa: Mahasiswa = Depends(get_current_mahasiswa),
+    db: Session = Depends(get_db),
+) -> dict:
+    lamaran = LamaranRepository(db).get(lamaran_id)
+    if lamaran is None:
+        raise HTTPException(status_code=404, detail="Lamaran tidak ditemukan")
+    if lamaran.mahasiswa_id != mahasiswa.mahasiswa_id:
+        raise HTTPException(status_code=403, detail="Bukan lamaran Anda")
+    if lamaran.status_pendaftaran != StatusLamaran.DITERIMA:
+        raise HTTPException(
+            status_code=400,
+            detail="Foto logbook hanya bisa diupload untuk lamaran yang sudah DITERIMA",
+        )
+
+    path = save_upload_file(
+        file,
+        subdir=f"logbook/mahasiswa-{mahasiswa.mahasiswa_id}/lamaran-{lamaran_id}",
+        allowed_extensions=IMAGE_EXTENSIONS,
+    )
+    return {"foto": path, "path": path}
+
+
 @router.get("/lamaran/{lamaran_id}", response_model=list[LogbookResponse])
 def list_logbook(
     lamaran_id: int,
@@ -82,8 +109,7 @@ def update_logbook(
 ):
     logbook_repo = LogbookRepository(db)
     logbook = _ambil_logbook_saya(logbook_repo, LamaranRepository(db), logbook_id, mahasiswa)
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(logbook, field, value)
+    logbook.edit(**data.model_dump(exclude_unset=True))
     logbook_repo.simpan_perubahan(logbook)
     logbook_repo.commit()
     return logbook
