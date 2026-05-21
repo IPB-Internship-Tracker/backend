@@ -2,6 +2,8 @@
 Repository polymorphic untuk KegiatanMBKM + Magang + Lomba + StudiIndependen.
 Ini convert dua arah antara ORM (dgn hirarki joined-table inheritance) dan Domain.
 """
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
 from app.domain.kegiatan import (
@@ -96,6 +98,9 @@ class KegiatanRepository:
         orm = self.db.get(KegiatanMBKMORM, mbkm_id)
         return self._to_domain(orm) if orm else None
 
+    def get_detail_by_id(self, mbkm_id: int) -> KegiatanMBKM | None:
+        return self.get(mbkm_id)
+
     def list(
         self,
         *,
@@ -111,6 +116,19 @@ class KegiatanRepository:
         if mitra_id is not None:
             q = q.filter(KegiatanMBKMORM.mitra_id == mitra_id)
         return [self._to_domain(o) for o in q.order_by(KegiatanMBKMORM.mbkm_id.desc()).all()]
+
+    def get_mbkm_list(
+        self,
+        *,
+        kategori: KategoriMBKM | None = None,
+        status_kegiatan: StatusKegiatan | None = None,
+        mitra_id: int | None = None,
+    ) -> list[KegiatanMBKM]:
+        return self.list(
+            kategori=kategori,
+            status_kegiatan=status_kegiatan,
+            mitra_id=mitra_id,
+        )
 
     # ---------- Mutation ----------
     def buat(self, kegiatan: KegiatanMBKM) -> KegiatanMBKM:

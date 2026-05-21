@@ -19,3 +19,26 @@ class Logbook:
             raise ForbiddenActionError(
                 "Durasi logbook harus > 0 menit dan <= 1440 menit (24 jam)"
             )
+
+    @property
+    def kegiatan_perhari(self) -> str:
+        """Alias class diagram untuk aktivitas."""
+        return self.aktivitas
+
+    @kegiatan_perhari.setter
+    def kegiatan_perhari(self, value: str) -> None:
+        self.aktivitas = value
+
+    def tambah_logbook(self) -> "Logbook":
+        return self
+
+    def edit(self, **perubahan) -> None:
+        for field_name, value in perubahan.items():
+            setattr(self, field_name, value)
+        self.__post_init__()
+
+    def hapus(self) -> "Logbook":
+        return self
+
+    def tambah_aktivitas(self, aktivitas: str) -> None:
+        self.aktivitas = aktivitas

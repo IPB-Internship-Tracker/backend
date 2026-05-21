@@ -1,7 +1,7 @@
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, Enum, ForeignKey, String, func
+from sqlalchemy import Date, Enum, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,7 +23,7 @@ class LamaranORM(Base):
     mbkm_id: Mapped[int] = mapped_column(
         ForeignKey("kegiatan_mbkm.mbkm_id", ondelete="CASCADE"), nullable=False
     )
-    berkas_pendaftaran: Mapped[str] = mapped_column(String(255), nullable=False)
+    berkas_pendaftaran: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
     tanggal_daftar: Mapped[date] = mapped_column(
         Date, server_default=func.current_date(), nullable=False
     )

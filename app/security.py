@@ -41,9 +41,35 @@ def create_access_token(user_id: int, role: UserRole, expires_delta: timedelta |
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
+def create_password_reset_token(
+    user_id: int,
+    role: UserRole,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Buat JWT token khusus reset password."""
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=settings.password_reset_token_expire_minutes)
+    )
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "role": role.value,
+        "purpose": "password_reset",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decode JWT. Raise ValueError jika invalid/expired."""
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError as e:
         raise ValueError(f"Token tidak valid: {e}") from e
+
+
+def decode_password_reset_token(token: str) -> dict[str, Any]:
+    """Decode token reset password dan pastikan purpose-nya benar."""
+    payload = decode_access_token(token)
+    if payload.get("purpose") != "password_reset":
+        raise ValueError("Token reset password tidak valid")
+    return payload

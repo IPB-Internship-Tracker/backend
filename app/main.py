@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.config import settings
 from app.database import Base, engine
@@ -8,6 +10,9 @@ from app.routes import auth, kegiatan, lamaran, logbook, mahasiswa, mitra, notif
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
+
+Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 # Izinkan React (Vite default port 5173, CRA port 3000) untuk konsumsi API
 app.add_middleware(

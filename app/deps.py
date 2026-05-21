@@ -78,6 +78,3 @@ def get_current_mitra(
             detail="Profil mitra tidak ditemukan",
         )
     return mitra
-
-
-require_admin = require_role(UserRole.ADMIN)

@@ -1,21 +1,23 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_mahasiswa, get_current_mitra, get_current_user
 from app.domain.exceptions import ForbiddenActionError
+from app.domain.kegiatan import DokumenLamaran
 from app.domain.lamaran import Lamaran, StatusLamaran
 from app.domain.mahasiswa import Mahasiswa
 from app.domain.mitra import Mitra
 from app.domain.notifikasi import JenisNotifikasi, Notifikasi
-from app.domain.user import User, UserRole
+from app.domain.user import User
 from app.repositories import (
     KegiatanRepository,
     LamaranRepository,
     MahasiswaRepository,
     NotifikasiRepository,
+    UserRepository,
 )
 from app.schemas import (
     LamaranCreate,
@@ -25,9 +27,44 @@ from app.schemas import (
 )
 from app.schemas.kegiatan import KegiatanListResponse
 from app.schemas.mahasiswa import MahasiswaResponse
+from app.uploads import DOCUMENT_EXTENSIONS, save_upload_file
 
 
 router = APIRouter(prefix="/lamaran", tags=["lamaran"])
+
+
+def _dokumen_key(dokumen: DokumenLamaran | str) -> str:
+    return dokumen.value if isinstance(dokumen, DokumenLamaran) else str(dokumen)
+
+
+def _validasi_berkas_wajib(kegiatan, berkas_pendaftaran: dict[DokumenLamaran, str]) -> None:
+    dokumen_dibutuhkan = getattr(kegiatan, "dokumen_dibutuhkan", None)
+    if not dokumen_dibutuhkan:
+        return
+
+    dokumen_wajib = {_dokumen_key(dokumen) for dokumen in dokumen_dibutuhkan}
+    dokumen_terupload = {_dokumen_key(dokumen) for dokumen in berkas_pendaftaran}
+    belum_di_upload = sorted(dokumen_wajib - dokumen_terupload)
+    if belum_di_upload:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Dokumen wajib belum lengkap: "
+                + ", ".join(belum_di_upload)
+            ),
+        )
+
+
+def _validasi_dokumen_dipilih(kegiatan, dokumen: DokumenLamaran) -> None:
+    dokumen_dibutuhkan = getattr(kegiatan, "dokumen_dibutuhkan", None)
+    if not dokumen_dibutuhkan:
+        return
+    dokumen_wajib = {_dokumen_key(item) for item in dokumen_dibutuhkan}
+    if dokumen.value not in dokumen_wajib:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dokumen {dokumen.value} tidak diminta untuk kegiatan ini",
+        )
 
 
 def _detail_response(lamaran: Lamaran, db: Session) -> dict:
@@ -37,6 +74,31 @@ def _detail_response(lamaran: Lamaran, db: Session) -> dict:
         **LamaranResponse.model_validate(lamaran).model_dump(),
         "mahasiswa": MahasiswaResponse.model_validate(mhs).model_dump(),
         "kegiatan": KegiatanListResponse.model_validate(kegiatan).model_dump(),
+    }
+
+
+@router.post("/{mbkm_id}/upload-berkas")
+def upload_berkas_lamaran(
+    mbkm_id: int,
+    dokumen: DokumenLamaran = Form(...),
+    file: UploadFile = File(...),
+    mahasiswa: Mahasiswa = Depends(get_current_mahasiswa),
+    db: Session = Depends(get_db),
+) -> dict:
+    kegiatan = KegiatanRepository(db).get(mbkm_id)
+    if kegiatan is None:
+        raise HTTPException(status_code=404, detail="Kegiatan tidak ditemukan")
+
+    _validasi_dokumen_dipilih(kegiatan, dokumen)
+    path = save_upload_file(
+        file,
+        subdir=f"lamaran/mahasiswa-{mahasiswa.mahasiswa_id}/kegiatan-{mbkm_id}",
+        allowed_extensions=DOCUMENT_EXTENSIONS,
+    )
+    return {
+        "dokumen": dokumen.value,
+        "path": path,
+        "berkas_pendaftaran": {dokumen.value: path},
     }
 
 
@@ -68,6 +130,8 @@ def buat_lamaran(
 
     if lamaran_repo.hitung_diterima(data.mbkm_id) >= kegiatan.kuota:
         raise HTTPException(status_code=400, detail="Kuota kegiatan sudah penuh")
+
+    _validasi_berkas_wajib(kegiatan, data.berkas_pendaftaran)
 
     lamaran = Lamaran(
         mahasiswa_id=mahasiswa.mahasiswa_id,
@@ -131,7 +195,6 @@ def detail_lamaran(
         kegiatan = KegiatanRepository(db).get(lamaran.mbkm_id)
         if mitra is None or kegiatan is None or not kegiatan.dimiliki_oleh(mitra.mitra_id):
             raise HTTPException(status_code=403, detail="Bukan lamaran untuk kegiatan Anda")
-    # admin: boleh semua
 
     return _detail_response(lamaran, db)
 
@@ -165,6 +228,7 @@ def ubah_status_lamaran(
 
     # buat notifikasi otomatis (ambil user_id dari mahasiswa)
     mhs = MahasiswaRepository(db).get(lamaran.mahasiswa_id)
+    user_mhs = UserRepository(db).get(mhs.user_id)
     notif = Notifikasi(
         user_id=mhs.user_id,
         judul="Status Lamaran Diperbarui",
@@ -175,5 +239,7 @@ def ubah_status_lamaran(
         jenis_notifikasi=JenisNotifikasi.STATUS_LAMARAN,
     )
     notif_repo.buat(notif)
+    notif.kirim_web()
+    notif.kirim_email(user_mhs.email)
     lamaran_repo.commit()
     return lamaran

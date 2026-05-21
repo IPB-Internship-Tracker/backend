@@ -173,12 +173,26 @@ class TestMagangCreate:
 # =========================================================
 class TestLamaranSchemas:
     def test_lamaran_create_valid(self):
-        l = LamaranCreate(mbkm_id=1, berkas_pendaftaran="cv.pdf")
+        l = LamaranCreate(
+            mbkm_id=1,
+            berkas_pendaftaran={"Curriculum Vitae (CV)": "cv.pdf"},
+        )
         assert l.mbkm_id == 1
+        assert l.berkas_pendaftaran[DokumenLamaran.CV] == "cv.pdf"
 
     def test_lamaran_create_mbkm_id_0_ditolak(self):
         with pytest.raises(ValidationError):
-            LamaranCreate(mbkm_id=0, berkas_pendaftaran="cv.pdf")
+            LamaranCreate(
+                mbkm_id=0,
+                berkas_pendaftaran={"Curriculum Vitae (CV)": "cv.pdf"},
+            )
+
+    def test_lamaran_create_berkas_kosong_ditolak(self):
+        with pytest.raises(ValidationError, match="tidak boleh kosong"):
+            LamaranCreate(
+                mbkm_id=1,
+                berkas_pendaftaran={"Curriculum Vitae (CV)": ""},
+            )
 
     @pytest.mark.parametrize("status", list(StatusLamaran))
     def test_status_update_semua_enum_valid(self, status):

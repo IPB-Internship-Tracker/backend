@@ -1,24 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from urllib.parse import quote
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.domain.mahasiswa import Mahasiswa
 from app.domain.mitra import Mitra
 from app.domain.user import User, UserRole
+from app.email import send_notification_email
 from app.repositories import MahasiswaRepository, MitraRepository, UserRepository
 from app.schemas import (
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     MahasiswaRegister,
     MahasiswaResponse,
     MitraRegister,
     MitraResponse,
+    ResetPasswordRequest,
     TokenResponse,
     UserResponse,
 )
-from app.security import create_access_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    create_password_reset_token,
+    decode_password_reset_token,
+    hash_password,
+    verify_password,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -54,6 +65,7 @@ def register_mahasiswa(data: MahasiswaRegister, db: Session = Depends(get_db)):
         fakultas=data.fakultas,
         program_studi=data.program_studi,
         angkatan=data.angkatan,
+        semester=data.semester,
     )
     new_mahasiswa = mahasiswa_repo.buat(new_mahasiswa)
 
@@ -119,6 +131,58 @@ def login(
 def login_json(data: LoginRequest, db: Session = Depends(get_db)):
     """Login alternatif via JSON body."""
     return _login_flow(data.email, data.password, db)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Kirim link reset password ke email user jika email terdaftar."""
+    user = UserRepository(db).get_by_email(data.email)
+    if user is not None:
+        token = create_password_reset_token(user_id=user.user_id, role=user.role)
+        reset_link = f"{settings.password_reset_url_base}?token={quote(token)}"
+        message = (
+            f"Halo {user.nama},\n\n"
+            "Kami menerima permintaan untuk reset password akun Anda.\n"
+            "Klik link berikut untuk membuat password baru:\n\n"
+            f"{reset_link}\n\n"
+            f"Link ini berlaku selama {settings.password_reset_token_expire_minutes} menit.\n"
+            "Jika Anda tidak meminta reset password, abaikan email ini."
+        )
+        send_notification_email(
+            to_email=user.email,
+            subject="Reset Password IPB Internship & Career Tracker",
+            message=message,
+        )
+
+    return {
+        "message": (
+            "Jika email terdaftar, instruksi reset password akan dikirim ke email tersebut."
+        )
+    }
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = decode_password_reset_token(data.token)
+        user_id = int(payload["sub"])
+    except (ValueError, KeyError):
+        raise HTTPException(status_code=400, detail="Token reset password tidak valid")
+
+    repo = UserRepository(db)
+    user = repo.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Token reset password tidak valid")
+
+    user.ganti_password(hash_password(data.password_baru))
+    repo.simpan_perubahan(user)
+    repo.commit()
 
 
 @router.get("/me", response_model=UserResponse)

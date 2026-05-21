@@ -77,7 +77,48 @@ class KegiatanMBKM:
     status_kegiatan: StatusKegiatan = StatusKegiatan.DIBUKA
     mbkm_id: int | None = None
 
+    @property
+    def kegiatan_id(self) -> int | None:
+        """Alias class diagram untuk mbkm_id."""
+        return self.mbkm_id
+
+    @kegiatan_id.setter
+    def kegiatan_id(self, value: int | None) -> None:
+        self.mbkm_id = value
+
+    @property
+    def kategori(self) -> KategoriMBKM:
+        """Alias class diagram untuk kategori_mbkm."""
+        return self.kategori_mbkm
+
+    @kategori.setter
+    def kategori(self, value: KategoriMBKM) -> None:
+        self.kategori_mbkm = value
+
+    @property
+    def info_lebihlanjut(self) -> str:
+        """Alias class diagram untuk info_lebih_lanjut."""
+        return self.info_lebih_lanjut
+
+    @info_lebihlanjut.setter
+    def info_lebihlanjut(self, value: str) -> None:
+        self.info_lebih_lanjut = value
+
     # ---------- Business rules ----------
+    def tambah(self) -> "KegiatanMBKM":
+        """Kembalikan entity untuk disimpan oleh repository."""
+        return self
+
+    def edit(self, **perubahan) -> None:
+        for field_name, value in perubahan.items():
+            setattr(self, field_name, value)
+
+    def hapus(self) -> "KegiatanMBKM":
+        """Validasi domain sebelum repository menghapus entity."""
+        if self.status_kegiatan == StatusKegiatan.BERLANGSUNG:
+            raise ForbiddenActionError("Kegiatan yang sedang berlangsung tidak bisa dihapus")
+        return self
+
     def tutup_pendaftaran(self) -> None:
         if self.status_kegiatan in (StatusKegiatan.SELESAI,):
             raise ForbiddenActionError(
@@ -114,10 +155,18 @@ class Magang(KegiatanMBKM):
         """Alias lama untuk kompatibilitas kode yang masih memakai lokasi."""
         return self.kota_lokasi
 
+    @lokasi.setter
+    def lokasi(self, value: str) -> None:
+        self.kota_lokasi = value
+
     @property
     def uang_saku(self) -> float:
         """Alias lama untuk kompatibilitas kode yang masih memakai uang_saku."""
         return self.gaji_perbulan
+
+    @uang_saku.setter
+    def uang_saku(self, value: float) -> None:
+        self.gaji_perbulan = value
 
 
 @dataclass
