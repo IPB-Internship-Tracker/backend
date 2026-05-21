@@ -8,7 +8,9 @@ import pytest
 from app.domain.user import UserRole
 from app.security import (
     create_access_token,
+    create_password_reset_token,
     decode_access_token,
+    decode_password_reset_token,
     hash_password,
     verify_password,
 )
@@ -75,3 +77,15 @@ class TestJWT:
         token_palsu = token + "XXX"  # ubah signature
         with pytest.raises(ValueError):
             decode_access_token(token_palsu)
+
+    def test_password_reset_token(self):
+        token = create_password_reset_token(user_id=7, role=UserRole.MITRA)
+        payload = decode_password_reset_token(token)
+        assert payload["sub"] == "7"
+        assert payload["role"] == "mitra"
+        assert payload["purpose"] == "password_reset"
+
+    def test_access_token_tidak_bisa_dipakai_reset_password(self):
+        token = create_access_token(user_id=7, role=UserRole.MITRA)
+        with pytest.raises(ValueError, match="reset password"):
+            decode_password_reset_token(token)
