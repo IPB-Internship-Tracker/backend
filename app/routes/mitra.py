@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_mitra
+from app.deps import get_current_mitra, get_current_user
 from app.domain.mitra import Mitra
+from app.domain.user import User
 from app.repositories import MitraRepository, UserRepository
 from app.schemas import MitraDetailResponse, MitraResponse, MitraUpdate
 from app.schemas.user import UserResponse
@@ -48,12 +49,19 @@ def update_profil_saya(
 
 
 @router.get("/", response_model=list[MitraResponse])
-def list_mitra(db: Session = Depends(get_db)):
+def list_mitra(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
     return MitraRepository(db).list_semua()
 
 
 @router.get("/{mitra_id}", response_model=MitraResponse)
-def detail_mitra(mitra_id: int, db: Session = Depends(get_db)):
+def detail_mitra(
+    mitra_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
     mitra = MitraRepository(db).get(mitra_id)
     if mitra is None:
         raise HTTPException(status_code=404, detail="Mitra tidak ditemukan")

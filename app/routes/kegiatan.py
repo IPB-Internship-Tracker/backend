@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_mitra
+from app.deps import get_current_mitra, get_current_user
 from app.domain.exceptions import ForbiddenActionError
 from app.domain.kegiatan import (
     KategoriMBKM,
@@ -13,6 +13,7 @@ from app.domain.kegiatan import (
     StudiIndependen,
 )
 from app.domain.mitra import Mitra
+from app.domain.user import User
 from app.repositories import KegiatanRepository
 from app.schemas import (
     KegiatanListResponse,
@@ -100,6 +101,7 @@ def buat_studi_independen(
 @router.get("/", response_model=list[KegiatanListResponse])
 def list_kegiatan(
     db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
     kategori: KategoriMBKM | None = None,
     status_kegiatan: StatusKegiatan | None = None,
     mitra_id: int | None = None,
@@ -110,7 +112,11 @@ def list_kegiatan(
 
 
 @router.get("/{mbkm_id}")
-def detail_kegiatan(mbkm_id: int, db: Session = Depends(get_db)):
+def detail_kegiatan(
+    mbkm_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
     kegiatan = KegiatanRepository(db).get(mbkm_id)
     if kegiatan is None:
         raise HTTPException(status_code=404, detail="Kegiatan tidak ditemukan")
@@ -126,8 +132,7 @@ def detail_kegiatan(mbkm_id: int, db: Session = Depends(get_db)):
 
 # ---------- UPDATE ----------
 def _apply_update(kegiatan: KegiatanMBKM, data_dict: dict) -> None:
-    for field, value in data_dict.items():
-        setattr(kegiatan, field, value)
+    kegiatan.edit(**data_dict)
 
 
 @router.patch("/magang/{mbkm_id}", response_model=MagangResponse)
@@ -206,6 +211,10 @@ def hapus_kegiatan(
     db: Session = Depends(get_db),
 ):
     repo = KegiatanRepository(db)
-    _get_milik_mitra(repo, mbkm_id, mitra)  # pastikan milik
+    kegiatan = _get_milik_mitra(repo, mbkm_id, mitra)  # pastikan milik
+    try:
+        kegiatan.hapus()
+    except ForbiddenActionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     repo.hapus(mbkm_id)
     repo.commit()

@@ -38,7 +38,6 @@ class TestUser:
                  password_hash="x", role=UserRole.MAHASISWA)
         assert u.is_mahasiswa() is True
         assert u.is_mitra() is False
-        assert u.is_admin() is False
 
     def test_role_mitra(self):
         u = User(nama="B", email="b@co.id",
@@ -46,16 +45,23 @@ class TestUser:
         assert u.is_mitra() is True
         assert u.is_mahasiswa() is False
 
-    def test_role_admin(self):
-        u = User(nama="C", email="c@x.com",
-                 password_hash="x", role=UserRole.ADMIN)
-        assert u.is_admin() is True
-
     def test_ganti_password(self):
         u = User(nama="X", email="x@x.com",
                  password_hash="lama", role=UserRole.MAHASISWA)
         u.ganti_password("baru")
         assert u.password_hash == "baru"
+
+    def test_method_class_diagram_user(self):
+        u = User(nama="X", email="x@x.com",
+                 password_hash="hash123", role=UserRole.MAHASISWA)
+        assert u.password == "hash123"
+        assert u.login("x@x.com", "hash123") is True
+        assert u.login("x@x.com", "salah") is False
+
+        u.update_profil(nama="X Baru", email="XBARU@X.COM")
+        assert u.nama == "X Baru"
+        assert u.email == "xbaru@x.com"
+        assert u.logout() is None
 
 
 # =========================================================
@@ -84,6 +90,12 @@ class TestMahasiswaProfil:
         assert m.nama == "X"
         assert m.angkatan == 2023
 
+    def test_update_profil_alias(self):
+        m = Mahasiswa(user_id=1, nama="X", nim="B1999001234",
+                      fakultas="F", program_studi="P", angkatan=2023)
+        m.update_profil(nama="X Baru")
+        assert m.nama == "X Baru"
+
 
 class TestMitraProfil:
     def test_perbarui_alamat(self):
@@ -92,6 +104,12 @@ class TestMitraProfil:
         mitra.perbarui_profil(alamat="Jl. Baru")
         assert mitra.alamat == "Jl. Baru"
         assert mitra.nama_instansi == "PT A"
+
+    def test_update_profil_alias(self):
+        mitra = Mitra(user_id=2, nama_instansi="PT A", jenis_instansi="Swasta",
+                      alamat="Jl. Lama", kontak="08111")
+        mitra.update_profil(kontak="08222")
+        assert mitra.kontak == "08222"
 
 
 # =========================================================
@@ -153,6 +171,19 @@ class TestKegiatan:
         assert k.dimiliki_oleh(1) is True
         assert k.dimiliki_oleh(99) is False
 
+    def test_alias_dan_method_class_diagram(self):
+        k = _bikin_magang()
+        k.kegiatan_id = 10
+        assert k.mbkm_id == 10
+        assert k.kategori == KategoriMBKM.MAGANG
+        assert k.info_lebihlanjut == k.info_lebih_lanjut
+        assert k.tambah() is k
+
+        k.edit(nama_kegiatan="Magang Baru", lokasi="Jakarta", uang_saku=2_000_000)
+        assert k.nama_kegiatan == "Magang Baru"
+        assert k.kota_lokasi == "Jakarta"
+        assert k.gaji_perbulan == 2_000_000
+
 
 # =========================================================
 # Polymorfisme: Magang / Lomba / StudiIndependen
@@ -210,7 +241,9 @@ class TestPolimorfismeKegiatan:
 # =========================================================
 def _bikin_lamaran(status=StatusLamaran.TELAH_MENDAFTAR) -> Lamaran:
     return Lamaran(
-        mahasiswa_id=1, mbkm_id=1, berkas_pendaftaran="cv.pdf",
+        mahasiswa_id=1,
+        mbkm_id=1,
+        berkas_pendaftaran={DokumenLamaran.CV: "cv.pdf"},
         tanggal_daftar=date.today(), status_pendaftaran=status,
     )
 
@@ -249,6 +282,21 @@ class TestLamaran:
         l.ubah_status(StatusLamaran.DITOLAK)
         assert l.is_final()
 
+    def test_method_class_diagram_lamaran(self):
+        l = _bikin_lamaran()
+        assert l.get_status() == StatusLamaran.TELAH_MENDAFTAR
+        assert l.validate() is True
+
+        l.tambah_berkas("portofolio.pdf")
+        assert l.berkas_pendaftaran[DokumenLamaran.CV] == "portofolio.pdf"
+
+        l.tambah_berkas(DokumenLamaran.PORTOFOLIO, "portfolio.pdf")
+        assert l.berkas_pendaftaran[DokumenLamaran.PORTOFOLIO] == "portfolio.pdf"
+
+        l.hapus_berkas()
+        assert l.berkas_pendaftaran == {}
+        assert l.validate() is False
+
 
 # =========================================================
 # Logbook — validasi __post_init__
@@ -265,6 +313,19 @@ class TestLogbook:
         lb = Logbook(lamaran_id=1, aktivitas="Test",
                      durasi=durasi_valid, tanggal=date.today())
         assert lb.durasi == durasi_valid
+
+    def test_alias_dan_method_class_diagram(self):
+        lb = Logbook(lamaran_id=1, aktivitas="Test",
+                     durasi=60, tanggal=date.today())
+        assert lb.kegiatan_perhari == "Test"
+        lb.kegiatan_perhari = "Meeting"
+        assert lb.aktivitas == "Meeting"
+
+        lb.edit(aktivitas="Coding", durasi=120)
+        assert lb.aktivitas == "Coding"
+        assert lb.durasi == 120
+        assert lb.tambah_logbook() is lb
+        assert lb.hapus() is lb
 
 
 # =========================================================
@@ -289,3 +350,9 @@ class TestNotifikasi:
                        status_baca=True)
         n.tandai_sudah_dibaca()
         assert n.status_baca is True
+
+    def test_method_class_diagram_notifikasi(self):
+        n = Notifikasi(user_id=1, judul="X", pesan="Y",
+                       jenis_notifikasi=JenisNotifikasi.STATUS_LAMARAN)
+        assert n.kirim_email() is False
+        assert n.kirim_web() is True
