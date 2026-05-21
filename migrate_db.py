@@ -26,6 +26,19 @@ MIGRATIONS = [
     ADD COLUMN IF NOT EXISTS narahubung VARCHAR(150)
     """,
     """
+    ALTER TABLE mahasiswa
+    ADD COLUMN IF NOT EXISTS semester INTEGER
+    """,
+    """
+    UPDATE mahasiswa
+    SET semester = 1
+    WHERE semester IS NULL
+    """,
+    """
+    ALTER TABLE mahasiswa
+    ALTER COLUMN semester SET NOT NULL
+    """,
+    """
     UPDATE kegiatan_mbkm
     SET narahubung = 'Narahubung belum diisi'
     WHERE narahubung IS NULL
@@ -215,6 +228,53 @@ MIGRATIONS = [
             ELSE 'INFORMATION_TECHNOLOGY'::bidangmagang
         END
     )
+    """,
+    # Berkas lamaran sekarang disimpan sebagai JSON mapping:
+    # {"Curriculum Vitae (CV)": "path/cv.pdf", "Transkrip Nilai": "..."}
+    """
+    ALTER TABLE lamaran
+    ADD COLUMN IF NOT EXISTS berkas_pendaftaran_json JSON
+    """,
+    """
+    UPDATE lamaran
+    SET berkas_pendaftaran_json = CASE
+        WHEN berkas_pendaftaran_json IS NOT NULL THEN berkas_pendaftaran_json
+        WHEN berkas_pendaftaran IS NULL THEN '{}'::json
+        WHEN berkas_pendaftaran::text LIKE '{%' THEN berkas_pendaftaran::json
+        ELSE json_build_object('Curriculum Vitae (CV)', berkas_pendaftaran)
+    END
+    """,
+    """
+    ALTER TABLE lamaran
+    ALTER COLUMN berkas_pendaftaran_json SET NOT NULL
+    """,
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'lamaran' AND column_name = 'berkas_pendaftaran'
+              AND data_type <> 'json'
+        ) THEN
+            ALTER TABLE lamaran DROP COLUMN berkas_pendaftaran;
+            ALTER TABLE lamaran RENAME COLUMN berkas_pendaftaran_json TO berkas_pendaftaran;
+        END IF;
+    END $$;
+    """,
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'lamaran' AND column_name = 'berkas_pendaftaran'
+              AND data_type = 'json'
+        ) AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'lamaran' AND column_name = 'berkas_pendaftaran_json'
+        ) THEN
+            ALTER TABLE lamaran DROP COLUMN berkas_pendaftaran_json;
+        END IF;
+    END $$;
     """,
 ]
 
