@@ -340,6 +340,116 @@ class TestKegiatanCRUD:
         )
         assert r.status_code == 404
 
+    def test_mitra_bisa_simpan_update_dan_hapus_draft(
+        self, client, mitra_token, auth_header,
+    ):
+        r = client.post(
+            "/kegiatan/draft",
+            json={
+                "kategori_mbkm": "magang",
+                "data": {
+                    "nama_kegiatan": "Draft Magang",
+                    "dokumen_dibutuhkan": ["Curriculum Vitae (CV)"],
+                },
+            },
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 201, r.text
+        draft = r.json()
+        assert draft["kategori_mbkm"] == "magang"
+        assert draft["data"]["nama_kegiatan"] == "Draft Magang"
+
+        r = client.patch(
+            f"/kegiatan/draft/{draft['draft_id']}",
+            json={"data": {"posisi": "Backend Developer"}},
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["data"]["nama_kegiatan"] == "Draft Magang"
+        assert body["data"]["posisi"] == "Backend Developer"
+
+        r = client.get("/kegiatan/draft/saya", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+
+        r = client.delete(
+            f"/kegiatan/draft/{draft['draft_id']}",
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 204
+
+        r = client.get("/kegiatan/draft/saya", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_publish_draft_magang_jadi_kegiatan(
+        self, client, mitra_token, auth_header,
+    ):
+        payload = {
+            "nama_kegiatan": "Magang Dari Draft",
+            "deskripsi": "Deskripsi lengkap magang dari draft",
+            "deadline_pendaftaran": "2099-06-01",
+            "kuota": 5,
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "syarat_ketentuan": "IPK minimal 3.0",
+            "narahubung": "HR Testing",
+            "info_lebih_lanjut": "https://example.com/draft",
+            "bidang": "Information Technology",
+            "posisi": "Backend Developer",
+            "penempatan": "Hybrid",
+            "kota_lokasi": "Bogor",
+            "alamat_lengkap": "Jl. Test No. 1, Bogor",
+            "tipe_gaji": "Paid",
+            "gaji_perbulan": 2000000,
+            "dokumen_dibutuhkan": ["Curriculum Vitae (CV)", "Transkrip Nilai"],
+        }
+        r = client.post(
+            "/kegiatan/draft",
+            json={"kategori_mbkm": "magang", "data": payload},
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 201, r.text
+        draft_id = r.json()["draft_id"]
+
+        r = client.post(
+            f"/kegiatan/draft/{draft_id}/publish",
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 201, r.text
+        kegiatan = r.json()
+        assert kegiatan["nama_kegiatan"] == "Magang Dari Draft"
+        assert kegiatan["nama_perusahaan"] == "PT Testing Corp"
+        assert kegiatan["kategori_mbkm"] == "magang"
+
+        r = client.get("/kegiatan/draft/saya", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_publish_draft_belum_lengkap_ditolak(
+        self, client, mitra_token, auth_header,
+    ):
+        r = client.post(
+            "/kegiatan/draft",
+            json={
+                "kategori_mbkm": "magang",
+                "data": {"nama_kegiatan": "Belum Lengkap"},
+            },
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 201, r.text
+        draft_id = r.json()["draft_id"]
+
+        r = client.post(
+            f"/kegiatan/draft/{draft_id}/publish",
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 422
+
+        r = client.get(f"/kegiatan/draft/{draft_id}", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+
 
 # =========================================================
 # Lamaran flow (tempat rule domain paling terlihat)
