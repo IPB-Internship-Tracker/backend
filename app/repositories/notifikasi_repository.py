@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.domain.notifikasi import JenisNotifikasi, Notifikasi
+from app.models.mahasiswa import MahasiswaORM
 from app.models.notifikasi import NotifikasiORM
 
 
@@ -37,6 +38,22 @@ class NotifikasiRepository:
         if jenis is not None:
             q = q.filter(NotifikasiORM.jenis_notifikasi == jenis)
         return [self._to_domain(o) for o in q.order_by(NotifikasiORM.created_at.desc()).all()]
+
+    def get_notifikasi_by_mahasiswa(
+        self,
+        mahasiswa_id: int,
+        *,
+        hanya_belum_dibaca: bool = False,
+        jenis: JenisNotifikasi | None = None,
+    ) -> list[Notifikasi]:
+        mahasiswa = self.db.get(MahasiswaORM, mahasiswa_id)
+        if mahasiswa is None:
+            return []
+        return self.list_by_user(
+            mahasiswa.user_id,
+            hanya_belum_dibaca=hanya_belum_dibaca,
+            jenis=jenis,
+        )
 
     def hitung_belum_dibaca(self, user_id: int) -> int:
         return (

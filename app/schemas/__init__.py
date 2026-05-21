@@ -1,4 +1,10 @@
-from app.schemas.auth import LoginRequest, TokenResponse, TokenPayload
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    TokenPayload,
+)
 from app.schemas.user import UserResponse, UserUpdate, ChangePasswordRequest
 from app.schemas.mahasiswa import (
     MahasiswaRegister,
@@ -35,6 +41,8 @@ from app.schemas.notifikasi import NotifikasiCreate, NotifikasiResponse
 
 __all__ = [
     "LoginRequest",
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
     "TokenResponse",
     "TokenPayload",
     "UserResponse",
