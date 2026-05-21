@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_mahasiswa, require_admin
+from app.deps import get_current_mahasiswa, get_current_user
 from app.domain.mahasiswa import Mahasiswa
+from app.domain.user import User
 from app.repositories import MahasiswaRepository, UserRepository
 from app.schemas import MahasiswaDetailResponse, MahasiswaResponse, MahasiswaUpdate
 from app.schemas.user import UserResponse
@@ -60,7 +61,7 @@ def update_profil_saya(
 @router.get("/", response_model=list[MahasiswaResponse])
 def list_mahasiswa(
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _user: User = Depends(get_current_user),
 ):
     return MahasiswaRepository(db).list_semua()
 
@@ -69,7 +70,7 @@ def list_mahasiswa(
 def detail_mahasiswa(
     mahasiswa_id: int,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _user: User = Depends(get_current_user),
 ):
     mahasiswa = MahasiswaRepository(db).get(mahasiswa_id)
     if mahasiswa is None:

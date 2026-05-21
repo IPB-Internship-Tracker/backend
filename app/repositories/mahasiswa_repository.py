@@ -18,6 +18,7 @@ class MahasiswaRepository:
             fakultas=orm.fakultas,
             program_studi=orm.program_studi,
             angkatan=orm.angkatan,
+            semester=orm.semester,
         )
 
     def get(self, mahasiswa_id: int) -> Mahasiswa | None:
@@ -42,6 +43,7 @@ class MahasiswaRepository:
             fakultas=mahasiswa.fakultas,
             program_studi=mahasiswa.program_studi,
             angkatan=mahasiswa.angkatan,
+            semester=mahasiswa.semester,
         )
         self.db.add(orm)
         self.db.flush()
@@ -56,6 +58,7 @@ class MahasiswaRepository:
         orm.fakultas = mahasiswa.fakultas
         orm.program_studi = mahasiswa.program_studi
         orm.angkatan = mahasiswa.angkatan
+        orm.semester = mahasiswa.semester
         return mahasiswa
 
     def commit(self) -> None:

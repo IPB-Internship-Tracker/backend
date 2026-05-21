@@ -12,6 +12,7 @@ class _MahasiswaBase(BaseModel):
     fakultas: str = Field(min_length=2, max_length=100)
     program_studi: str = Field(min_length=2, max_length=100)
     angkatan: int = Field(ge=2022, le=2026)
+    semester: int = Field(default=1, ge=1, le=14)
 
 
 class MahasiswaRegister(_MahasiswaBase):
@@ -53,6 +54,7 @@ class MahasiswaUpdate(BaseModel):
     fakultas: str | None = Field(default=None, min_length=2, max_length=100)
     program_studi: str | None = Field(default=None, min_length=2, max_length=100)
     angkatan: int | None = Field(default=None, ge=2022, le=2026)
+    semester: int | None = Field(default=None, ge=1, le=14)
 
 
 class MahasiswaResponse(_MahasiswaBase):

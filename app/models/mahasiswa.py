@@ -22,6 +22,7 @@ class MahasiswaORM(Base):
     fakultas: Mapped[str] = mapped_column(String(100), nullable=False)
     program_studi: Mapped[str] = mapped_column(String(100), nullable=False)
     angkatan: Mapped[int] = mapped_column(Integer, nullable=False)
+    semester: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     user: Mapped["UserORM"] = relationship(back_populates="mahasiswa")
     lamaran: Mapped[list["LamaranORM"]] = relationship(
