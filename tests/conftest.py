@@ -17,6 +17,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import (  # noqa: F401 - pastikan semua tabel ter-register
     KegiatanMBKMORM,
+    KegiatanDraftORM,
     LamaranORM,
     LogbookORM,
     MagangORM,

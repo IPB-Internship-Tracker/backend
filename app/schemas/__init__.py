@@ -30,6 +30,11 @@ from app.schemas.kegiatan import (
     StudiIndependenResponse,
     KegiatanListResponse,
 )
+from app.schemas.kegiatan_draft import (
+    KegiatanDraftCreate,
+    KegiatanDraftUpdate,
+    KegiatanDraftResponse,
+)
 from app.schemas.lamaran import (
     LamaranCreate,
     LamaranStatusUpdate,
@@ -66,6 +71,9 @@ __all__ = [
     "StudiIndependenUpdate",
     "StudiIndependenResponse",
     "KegiatanListResponse",
+    "KegiatanDraftCreate",
+    "KegiatanDraftUpdate",
+    "KegiatanDraftResponse",
     "LamaranCreate",
     "LamaranStatusUpdate",
     "LamaranResponse",

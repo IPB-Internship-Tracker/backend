@@ -39,6 +39,16 @@ MIGRATIONS = [
     ALTER COLUMN semester SET NOT NULL
     """,
     """
+    CREATE TABLE IF NOT EXISTS kegiatan_draft (
+        draft_id SERIAL PRIMARY KEY,
+        mitra_id INTEGER NOT NULL REFERENCES mitra(mitra_id) ON DELETE CASCADE,
+        kategori_mbkm kategorimbkm NOT NULL,
+        data JSON NOT NULL DEFAULT '{}'::json,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+    )
+    """,
+    """
     UPDATE kegiatan_mbkm
     SET narahubung = 'Narahubung belum diisi'
     WHERE narahubung IS NULL

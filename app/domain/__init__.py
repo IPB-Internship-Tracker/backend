@@ -14,6 +14,7 @@ from app.domain.kegiatan import (
     Lomba,
     StudiIndependen,
 )
+from app.domain.kegiatan_draft import KegiatanDraft
 from app.domain.lamaran import Lamaran, StatusLamaran
 from app.domain.logbook import Logbook
 from app.domain.notifikasi import Notifikasi, JenisNotifikasi
@@ -36,6 +37,7 @@ __all__ = [
     "Magang",
     "Lomba",
     "StudiIndependen",
+    "KegiatanDraft",
     "Lamaran",
     "StatusLamaran",
     "Logbook",

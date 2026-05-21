@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,10 +13,14 @@ from app.domain.kegiatan import (
     StatusKegiatan,
     StudiIndependen,
 )
+from app.domain.kegiatan_draft import KegiatanDraft
 from app.domain.mitra import Mitra
 from app.domain.user import User
-from app.repositories import KegiatanRepository
+from app.repositories import KegiatanDraftRepository, KegiatanRepository
 from app.schemas import (
+    KegiatanDraftCreate,
+    KegiatanDraftResponse,
+    KegiatanDraftUpdate,
     KegiatanListResponse,
     LombaCreate,
     LombaResponse,
@@ -41,6 +46,69 @@ def _get_milik_mitra(
     if not kegiatan.dimiliki_oleh(mitra.mitra_id):  # method domain
         raise HTTPException(status_code=403, detail="Anda bukan pemilik kegiatan ini")
     return kegiatan
+
+
+def _get_draft_milik_mitra(
+    repo: KegiatanDraftRepository, draft_id: int, mitra: Mitra
+) -> KegiatanDraft:
+    draft = repo.get(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft tidak ditemukan")
+    if not draft.dimiliki_oleh(mitra.mitra_id):
+        raise HTTPException(status_code=403, detail="Anda bukan pemilik draft ini")
+    return draft
+
+
+def _format_validation_errors(exc: ValidationError) -> list[dict]:
+    errors = []
+    for error in exc.errors():
+        if "ctx" in error:
+            error = {**error, "ctx": {key: str(value) for key, value in error["ctx"].items()}}
+        errors.append(error)
+    return errors
+
+
+def _kegiatan_response(kegiatan: KegiatanMBKM) -> dict:
+    if isinstance(kegiatan, Magang):
+        return MagangResponse.model_validate(kegiatan).model_dump()
+    if isinstance(kegiatan, Lomba):
+        return LombaResponse.model_validate(kegiatan).model_dump()
+    if isinstance(kegiatan, StudiIndependen):
+        return StudiIndependenResponse.model_validate(kegiatan).model_dump()
+    return KegiatanListResponse.model_validate(kegiatan).model_dump()
+
+
+def _buat_kegiatan_dari_payload(
+    kategori: KategoriMBKM, payload: dict, mitra: Mitra
+) -> KegiatanMBKM:
+    try:
+        if kategori == KategoriMBKM.MAGANG:
+            data = MagangCreate(**payload)
+            data_dict = data.model_dump()
+            data_dict["nama_perusahaan"] = data_dict["nama_perusahaan"] or mitra.nama_instansi
+            return Magang(
+                mitra_id=mitra.mitra_id,
+                kategori_mbkm=KategoriMBKM.MAGANG,
+                **data_dict,
+            )
+        if kategori == KategoriMBKM.LOMBA:
+            data = LombaCreate(**payload)
+            return Lomba(
+                mitra_id=mitra.mitra_id,
+                kategori_mbkm=KategoriMBKM.LOMBA,
+                **data.model_dump(),
+            )
+        if kategori == KategoriMBKM.STUDI_INDEPENDEN:
+            data = StudiIndependenCreate(**payload)
+            return StudiIndependen(
+                mitra_id=mitra.mitra_id,
+                kategori_mbkm=KategoriMBKM.STUDI_INDEPENDEN,
+                **data.model_dump(),
+            )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=_format_validation_errors(exc))
+
+    raise HTTPException(status_code=400, detail="Kategori kegiatan tidak dikenali")
 
 
 # ---------- CREATE ----------
@@ -97,6 +165,86 @@ def buat_studi_independen(
     return kegiatan
 
 
+# ---------- DRAFT ----------
+@router.post("/draft", response_model=KegiatanDraftResponse, status_code=201)
+def simpan_draft_kegiatan(
+    data: KegiatanDraftCreate,
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    repo = KegiatanDraftRepository(db)
+    draft = KegiatanDraft(
+        mitra_id=mitra.mitra_id,
+        kategori_mbkm=data.kategori_mbkm,
+        data=data.data,
+    )
+    draft = repo.buat(draft)
+    repo.commit()
+    return draft
+
+
+@router.get("/draft/saya", response_model=list[KegiatanDraftResponse])
+def list_draft_saya(
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    return KegiatanDraftRepository(db).list_by_mitra(mitra.mitra_id)
+
+
+@router.get("/draft/{draft_id}", response_model=KegiatanDraftResponse)
+def detail_draft(
+    draft_id: int,
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    return _get_draft_milik_mitra(KegiatanDraftRepository(db), draft_id, mitra)
+
+
+@router.patch("/draft/{draft_id}", response_model=KegiatanDraftResponse)
+def update_draft(
+    draft_id: int,
+    data: KegiatanDraftUpdate,
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    repo = KegiatanDraftRepository(db)
+    draft = _get_draft_milik_mitra(repo, draft_id, mitra)
+    draft.edit(kategori_mbkm=data.kategori_mbkm, data=data.data)
+    draft = repo.simpan_perubahan(draft)
+    repo.commit()
+    return draft
+
+
+@router.delete("/draft/{draft_id}", status_code=204)
+def hapus_draft(
+    draft_id: int,
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    repo = KegiatanDraftRepository(db)
+    draft = _get_draft_milik_mitra(repo, draft_id, mitra)
+    draft.hapus()
+    repo.hapus(draft_id)
+    repo.commit()
+
+
+@router.post("/draft/{draft_id}/publish", status_code=201)
+def publish_draft(
+    draft_id: int,
+    mitra: Mitra = Depends(get_current_mitra),
+    db: Session = Depends(get_db),
+):
+    draft_repo = KegiatanDraftRepository(db)
+    draft = _get_draft_milik_mitra(draft_repo, draft_id, mitra)
+    kegiatan = _buat_kegiatan_dari_payload(draft.kategori_mbkm, draft.data, mitra)
+
+    kegiatan_repo = KegiatanRepository(db)
+    kegiatan_repo.buat(kegiatan)
+    draft_repo.hapus(draft_id)
+    kegiatan_repo.commit()
+    return _kegiatan_response(kegiatan)
+
+
 # ---------- READ ----------
 @router.get("/", response_model=list[KegiatanListResponse])
 def list_kegiatan(
@@ -121,13 +269,7 @@ def detail_kegiatan(
     if kegiatan is None:
         raise HTTPException(status_code=404, detail="Kegiatan tidak ditemukan")
 
-    if isinstance(kegiatan, Magang):
-        return MagangResponse.model_validate(kegiatan).model_dump()
-    if isinstance(kegiatan, Lomba):
-        return LombaResponse.model_validate(kegiatan).model_dump()
-    if isinstance(kegiatan, StudiIndependen):
-        return StudiIndependenResponse.model_validate(kegiatan).model_dump()
-    return KegiatanListResponse.model_validate(kegiatan).model_dump()
+    return _kegiatan_response(kegiatan)
 
 
 # ---------- UPDATE ----------
