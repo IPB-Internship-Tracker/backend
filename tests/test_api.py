@@ -6,6 +6,16 @@ from datetime import date
 
 import pytest
 
+from app.security import create_password_reset_token
+from app.domain.user import UserRole
+
+
+def berkas_lamaran(cv: str = "cv.pdf", transkrip: str = "transkrip.pdf") -> dict:
+    return {
+        "Curriculum Vitae (CV)": cv,
+        "Transkrip Nilai": transkrip,
+    }
+
 
 # =========================================================
 # Root & Auth
@@ -24,9 +34,11 @@ class TestRegister:
             "nama": "Budi", "email": "budi@apps.ipb.ac.id",
             "password": "rahasia123", "nim": "G6401231033",
             "fakultas": "Ilkom", "program_studi": "Ilkom", "angkatan": 2023,
+            "semester": 3,
         })
         assert r.status_code == 201
         assert r.json()["nim"] == "G6401231033"
+        assert r.json()["semester"] == 3
 
     def test_register_mahasiswa_email_gmail_ditolak(self, client):
         r = client.post("/auth/register/mahasiswa", json={
@@ -120,6 +132,80 @@ class TestChangePassword:
         assert r.status_code == 400
 
 
+class TestForgotPassword:
+    def test_forgot_password_kirim_email_jika_user_ada(
+        self, client, mahasiswa_token, monkeypatch,
+    ):
+        sent_emails = []
+
+        def fake_send_notification_email(*, to_email: str, subject: str, message: str) -> bool:
+            sent_emails.append({
+                "to_email": to_email,
+                "subject": subject,
+                "message": message,
+            })
+            return True
+
+        monkeypatch.setattr(
+            "app.routes.auth.send_notification_email",
+            fake_send_notification_email,
+        )
+
+        r = client.post("/auth/forgot-password", json={
+            "email": "budi@apps.ipb.ac.id",
+        })
+
+        assert r.status_code == 200
+        assert len(sent_emails) == 1
+        assert sent_emails[0]["to_email"] == "budi@apps.ipb.ac.id"
+        assert "Reset Password" in sent_emails[0]["subject"]
+        assert "token=" in sent_emails[0]["message"]
+
+    def test_forgot_password_email_tidak_terdaftar_tetap_200(self, client, monkeypatch):
+        sent_emails = []
+
+        def fake_send_notification_email(*, to_email: str, subject: str, message: str) -> bool:
+            sent_emails.append(to_email)
+            return True
+
+        monkeypatch.setattr(
+            "app.routes.auth.send_notification_email",
+            fake_send_notification_email,
+        )
+
+        r = client.post("/auth/forgot-password", json={
+            "email": "tidakada@apps.ipb.ac.id",
+        })
+
+        assert r.status_code == 200
+        assert sent_emails == []
+
+    def test_reset_password_sukses(self, client, mahasiswa_token):
+        token = create_password_reset_token(
+            user_id=1,
+            role=UserRole.MAHASISWA,
+        )
+
+        r = client.post("/auth/reset-password", json={
+            "token": token,
+            "password_baru": "baru12345",
+        })
+        assert r.status_code == 204
+
+        r = client.post("/auth/login", data={
+            "username": "budi@apps.ipb.ac.id",
+            "password": "baru12345",
+        })
+        assert r.status_code == 200
+
+    def test_reset_password_token_invalid(self, client):
+        r = client.post("/auth/reset-password", json={
+            "token": "token.invalid",
+            "password_baru": "baru12345",
+        })
+        assert r.status_code == 400
+
+
 # =========================================================
 # Role-based access control
 # =========================================================
@@ -150,7 +236,7 @@ class TestRBAC:
         self, client, mitra_token, auth_header,
     ):
         r = client.post("/lamaran/", json={
-            "mbkm_id": 1, "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": 1, "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mitra_token))
         assert r.status_code == 403
 
@@ -164,24 +250,35 @@ class TestKegiatanCRUD:
         assert magang_kegiatan["kategori_mbkm"] == "magang"
         assert magang_kegiatan["status_kegiatan"] == "dibuka"
 
-    def test_list_kegiatan_public(self, client, magang_kegiatan):
+    def test_list_kegiatan_wajib_login(self, client, mahasiswa_token, magang_kegiatan, auth_header):
         r = client.get("/kegiatan/")
+        assert r.status_code == 401
+
+        r = client.get("/kegiatan/", headers=auth_header(mahasiswa_token))
         assert r.status_code == 200
         data = r.json()
         assert len(data) == 1
         assert data[0]["kategori_mbkm"] == "magang"
 
-    def test_filter_kegiatan_by_kategori(self, client, magang_kegiatan):
-        r = client.get("/kegiatan/?kategori=magang")
+    def test_filter_kegiatan_by_kategori(self, client, mahasiswa_token, magang_kegiatan, auth_header):
+        r = client.get("/kegiatan/?kategori=magang", headers=auth_header(mahasiswa_token))
         assert r.status_code == 200
         assert len(r.json()) == 1
 
-        r = client.get("/kegiatan/?kategori=lomba")
+        r = client.get("/kegiatan/?kategori=lomba", headers=auth_header(mahasiswa_token))
         assert r.status_code == 200
         assert len(r.json()) == 0
 
-    def test_detail_kegiatan_magang_polymorphic(self, client, magang_kegiatan):
+    def test_detail_kegiatan_magang_polymorphic(
+        self, client, mahasiswa_token, magang_kegiatan, auth_header,
+    ):
         r = client.get(f"/kegiatan/{magang_kegiatan['mbkm_id']}")
+        assert r.status_code == 401
+
+        r = client.get(
+            f"/kegiatan/{magang_kegiatan['mbkm_id']}",
+            headers=auth_header(mahasiswa_token),
+        )
         assert r.status_code == 200
         body = r.json()
         # response harus punya field khusus magang
@@ -237,7 +334,10 @@ class TestKegiatanCRUD:
             headers=auth_header(mitra_token),
         )
         assert r.status_code == 204
-        r = client.get(f"/kegiatan/{magang_kegiatan['mbkm_id']}")
+        r = client.get(
+            f"/kegiatan/{magang_kegiatan['mbkm_id']}",
+            headers=auth_header(mitra_token),
+        )
         assert r.status_code == 404
 
 
@@ -250,16 +350,40 @@ class TestLamaranFlow:
     ):
         r = client.post("/lamaran/", json={
             "mbkm_id": magang_kegiatan["mbkm_id"],
-            "berkas_pendaftaran": "cv.pdf",
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 201
         assert r.json()["status_pendaftaran"] == "telah_mendaftar"
+
+    def test_mahasiswa_daftar_dokumen_wajib_belum_lengkap_ditolak(
+        self, client, mahasiswa_token, magang_kegiatan, auth_header,
+    ):
+        r = client.post("/lamaran/", json={
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": {"Curriculum Vitae (CV)": "cv.pdf"},
+        }, headers=auth_header(mahasiswa_token))
+        assert r.status_code == 400
+        assert "Transkrip Nilai" in r.json()["detail"]
+
+    def test_upload_berkas_lamaran(self, client, mahasiswa_token, magang_kegiatan, auth_header, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.uploads.settings.upload_dir", str(tmp_path))
+        r = client.post(
+            f"/lamaran/{magang_kegiatan['mbkm_id']}/upload-berkas",
+            data={"dokumen": "Curriculum Vitae (CV)"},
+            files={"file": ("cv.pdf", b"isi cv", "application/pdf")},
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["dokumen"] == "Curriculum Vitae (CV)"
+        assert body["path"].startswith("/uploads/lamaran/")
+        assert body["berkas_pendaftaran"]["Curriculum Vitae (CV)"] == body["path"]
 
     def test_daftar_ke_kegiatan_ga_ada_404(
         self, client, mahasiswa_token, auth_header,
     ):
         r = client.post("/lamaran/", json={
-            "mbkm_id": 9999, "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": 9999, "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 404
 
@@ -267,10 +391,12 @@ class TestLamaranFlow:
         self, client, mahasiswa_token, magang_kegiatan, auth_header,
     ):
         client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv1.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran("cv1.pdf", "transkrip1.pdf"),
         }, headers=auth_header(mahasiswa_token))
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv2.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran("cv2.pdf", "transkrip2.pdf"),
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 409
 
@@ -284,7 +410,8 @@ class TestLamaranFlow:
         )
         # mahasiswa coba daftar
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 400
         assert "ditutup" in r.json()["detail"]
@@ -294,7 +421,8 @@ class TestLamaranFlow:
     ):
         # mahasiswa daftar
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         lamaran_id = r.json()["lamaran_id"]
 
@@ -318,7 +446,8 @@ class TestLamaranFlow:
     ):
         """Rule domain: lamaran yg sudah DITERIMA tidak bisa diubah."""
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         lamaran_id = r.json()["lamaran_id"]
 
@@ -342,7 +471,8 @@ class TestLamaranFlow:
         self, client, mahasiswa_token, magang_kegiatan, auth_header,
     ):
         client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         r = client.get("/lamaran/saya", headers=auth_header(mahasiswa_token))
         assert r.status_code == 200
@@ -352,7 +482,8 @@ class TestLamaranFlow:
         self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header,
     ):
         client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         r = client.get(
             f"/lamaran/kegiatan/{magang_kegiatan['mbkm_id']}",
@@ -369,7 +500,8 @@ class TestLogbook:
     def _lamaran_yang_diterima(self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header) -> int:
         """Helper: bikin lamaran lalu terima-kan. Return lamaran_id."""
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         lamaran_id = r.json()["lamaran_id"]
         client.patch(
@@ -393,11 +525,38 @@ class TestLogbook:
         assert r.status_code == 201
         assert r.json()["durasi"] == 480
 
+    def test_upload_foto_logbook_sukses(
+        self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header, tmp_path, monkeypatch,
+    ):
+        monkeypatch.setattr("app.uploads.settings.upload_dir", str(tmp_path))
+        lamaran_id = self._lamaran_yang_diterima(
+            client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header,
+        )
+        r = client.post(
+            f"/logbook/lamaran/{lamaran_id}/upload-foto",
+            files={"file": ("foto.jpg", b"isi foto", "image/jpeg")},
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["foto"].startswith("/uploads/logbook/")
+
+        r = client.post("/logbook/", json={
+            "lamaran_id": lamaran_id,
+            "aktivitas": "Dokumentasi kegiatan",
+            "durasi": 120,
+            "tanggal": "2099-07-03",
+            "foto": body["foto"],
+        }, headers=auth_header(mahasiswa_token))
+        assert r.status_code == 201
+        assert r.json()["foto"] == body["foto"]
+
     def test_logbook_untuk_lamaran_belum_diterima_ditolak(
         self, client, mahasiswa_token, magang_kegiatan, auth_header,
     ):
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         lamaran_id = r.json()["lamaran_id"]
         # status masih TELAH_MENDAFTAR
@@ -436,7 +595,8 @@ class TestLogbook:
 class TestNotifikasi:
     def _siapkan_notifikasi(self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header):
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"], "berkas_pendaftaran": "cv.pdf",
+            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         lamaran_id = r.json()["lamaran_id"]
         client.patch(
@@ -491,6 +651,23 @@ class TestNotifikasi:
 # Update profil
 # =========================================================
 class TestProfilUpdate:
+    def test_list_dan_detail_mitra_wajib_login(self, client, mitra_token, auth_header):
+        r = client.get("/mitra/")
+        assert r.status_code == 401
+
+        r = client.get("/mitra/", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        mitra_id = body[0]["mitra_id"]
+
+        r = client.get(f"/mitra/{mitra_id}")
+        assert r.status_code == 401
+
+        r = client.get(f"/mitra/{mitra_id}", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        assert r.json()["nama_instansi"] == "PT Testing Corp"
+
     def test_update_profil_mahasiswa(self, client, mahasiswa_token, auth_header):
         r = client.patch("/mahasiswa/me", json={
             "nama": "Budi Updated", "angkatan": 2024,
