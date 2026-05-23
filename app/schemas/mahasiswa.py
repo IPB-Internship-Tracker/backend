@@ -18,7 +18,7 @@ class _MahasiswaBase(BaseModel):
 class MahasiswaRegister(_MahasiswaBase):
     """Payload untuk register mahasiswa (gabungan user + mahasiswa)."""
     email: EmailStr
-    password: str = Field(min_length=8, max_length=10, description="Password 8-10 karakter: huruf, angka, atau simbol")
+    password: str = Field(min_length=8, max_length=30, description="Password 8-30 karakter: huruf, angka, atau simbol")
 
     @field_validator("email", mode="before")
     @classmethod
