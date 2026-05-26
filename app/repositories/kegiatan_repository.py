@@ -1,6 +1,6 @@
 """
 Repository polymorphic untuk KegiatanMBKM + Magang + Lomba + StudiIndependen.
-Ini convert dua arah antara ORM (dgn hirarki joined-table inheritance) dan Domain.
+Ini convert dua arah antara ORM (dgn joined-table inheritance) dan Domain.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class KegiatanRepository:
             syarat_ketentuan=orm.syarat_ketentuan,
             narahubung=orm.narahubung,
             info_lebih_lanjut=orm.info_lebih_lanjut,
-            status_kegiatan=orm.status_kegiatan,
+            status=orm.status,
         )
         if isinstance(orm, MagangORM):
             return Magang(
@@ -79,24 +79,35 @@ class KegiatanRepository:
             return Lomba(
                 **base,
                 bidang=orm.bidang,
-                tingkat_lomba=orm.tingkat_lomba,
-                jenis_peserta=orm.jenis_peserta,
-                jumlah_anggota=orm.jumlah_anggota,
-                hadiah=orm.hadiah,
+                poster=orm.poster,
             )
         if isinstance(orm, StudiIndependenORM):
             return StudiIndependen(
                 **base,
-                kurikulum=orm.kurikulum,
-                metode_pembelajaran=orm.metode_pembelajaran,
-                benefit=orm.benefit,
+                bidang=orm.bidang,
+                poster=orm.poster,
             )
         return KegiatanMBKM(**base)
+
+    def _to_domain_sambil_sinkron_deadline(
+        self, orm: KegiatanMBKMORM
+    ) -> tuple[KegiatanMBKM, bool]:
+        kegiatan = self._to_domain(orm)
+        if orm.status != kegiatan.status:
+            orm.status = kegiatan.status
+            self.db.flush()
+            return kegiatan, True
+        return kegiatan, False
 
     # ---------- Query ----------
     def get(self, mbkm_id: int) -> KegiatanMBKM | None:
         orm = self.db.get(KegiatanMBKMORM, mbkm_id)
-        return self._to_domain(orm) if orm else None
+        if orm is None:
+            return None
+        kegiatan, status_berubah = self._to_domain_sambil_sinkron_deadline(orm)
+        if status_berubah:
+            self.db.commit()
+        return kegiatan
 
     def get_detail_by_id(self, mbkm_id: int) -> KegiatanMBKM | None:
         return self.get(mbkm_id)
@@ -105,33 +116,46 @@ class KegiatanRepository:
         self,
         *,
         kategori: KategoriMBKM | None = None,
-        status_kegiatan: StatusKegiatan | None = None,
+        status: StatusKegiatan | None = None,
         mitra_id: int | None = None,
     ) -> list[KegiatanMBKM]:
         q = self.db.query(KegiatanMBKMORM)
         if kategori is not None:
             q = q.filter(KegiatanMBKMORM.kategori_mbkm == kategori)
-        if status_kegiatan is not None:
-            q = q.filter(KegiatanMBKMORM.status_kegiatan == status_kegiatan)
         if mitra_id is not None:
             q = q.filter(KegiatanMBKMORM.mitra_id == mitra_id)
-        return [self._to_domain(o) for o in q.order_by(KegiatanMBKMORM.mbkm_id.desc()).all()]
+        kegiatan_list = []
+        ada_status_berubah = False
+        for orm in q.order_by(KegiatanMBKMORM.mbkm_id.desc()).all():
+            kegiatan, status_berubah = self._to_domain_sambil_sinkron_deadline(orm)
+            kegiatan_list.append(kegiatan)
+            ada_status_berubah = ada_status_berubah or status_berubah
+        if ada_status_berubah:
+            self.db.commit()
+        if status is not None:
+            kegiatan_list = [
+                kegiatan
+                for kegiatan in kegiatan_list
+                if kegiatan.status == status
+            ]
+        return kegiatan_list
 
     def get_mbkm_list(
         self,
         *,
         kategori: KategoriMBKM | None = None,
-        status_kegiatan: StatusKegiatan | None = None,
+        status: StatusKegiatan | None = None,
         mitra_id: int | None = None,
     ) -> list[KegiatanMBKM]:
         return self.list(
             kategori=kategori,
-            status_kegiatan=status_kegiatan,
+            status=status,
             mitra_id=mitra_id,
         )
 
     # ---------- Mutation ----------
     def buat(self, kegiatan: KegiatanMBKM) -> KegiatanMBKM:
+        kegiatan.sinkronkan_status_deadline()
         if isinstance(kegiatan, Magang):
             orm: KegiatanMBKMORM = MagangORM(
                 mitra_id=kegiatan.mitra_id,
@@ -140,7 +164,7 @@ class KegiatanRepository:
                 kategori_mbkm=KategoriMBKM.MAGANG,
                 deadline_pendaftaran=kegiatan.deadline_pendaftaran,
                 kuota=kegiatan.kuota,
-                status_kegiatan=kegiatan.status_kegiatan,
+                status=kegiatan.status,
                 tanggal_mulai=kegiatan.tanggal_mulai,
                 tanggal_selesai=kegiatan.tanggal_selesai,
                 syarat_ketentuan=kegiatan.syarat_ketentuan,
@@ -165,17 +189,14 @@ class KegiatanRepository:
                 kategori_mbkm=KategoriMBKM.LOMBA,
                 deadline_pendaftaran=kegiatan.deadline_pendaftaran,
                 kuota=kegiatan.kuota,
-                status_kegiatan=kegiatan.status_kegiatan,
+                status=kegiatan.status,
                 tanggal_mulai=kegiatan.tanggal_mulai,
                 tanggal_selesai=kegiatan.tanggal_selesai,
                 syarat_ketentuan=kegiatan.syarat_ketentuan,
                 narahubung=kegiatan.narahubung,
                 info_lebih_lanjut=kegiatan.info_lebih_lanjut,
                 bidang=kegiatan.bidang,
-                tingkat_lomba=kegiatan.tingkat_lomba,
-                jenis_peserta=kegiatan.jenis_peserta,
-                jumlah_anggota=kegiatan.jumlah_anggota,
-                hadiah=kegiatan.hadiah,
+                poster=kegiatan.poster,
             )
         elif isinstance(kegiatan, StudiIndependen):
             orm = StudiIndependenORM(
@@ -185,15 +206,14 @@ class KegiatanRepository:
                 kategori_mbkm=KategoriMBKM.STUDI_INDEPENDEN,
                 deadline_pendaftaran=kegiatan.deadline_pendaftaran,
                 kuota=kegiatan.kuota,
-                status_kegiatan=kegiatan.status_kegiatan,
+                status=kegiatan.status,
                 tanggal_mulai=kegiatan.tanggal_mulai,
                 tanggal_selesai=kegiatan.tanggal_selesai,
                 syarat_ketentuan=kegiatan.syarat_ketentuan,
                 narahubung=kegiatan.narahubung,
                 info_lebih_lanjut=kegiatan.info_lebih_lanjut,
-                kurikulum=kegiatan.kurikulum,
-                metode_pembelajaran=kegiatan.metode_pembelajaran,
-                benefit=kegiatan.benefit,
+                bidang=kegiatan.bidang,
+                poster=kegiatan.poster,
             )
         else:
             raise ValueError(f"Tipe kegiatan tidak dikenali: {type(kegiatan).__name__}")
@@ -207,13 +227,14 @@ class KegiatanRepository:
         orm = self.db.get(KegiatanMBKMORM, kegiatan.mbkm_id)
         if orm is None:
             raise ValueError(f"Kegiatan id={kegiatan.mbkm_id} tidak ada")
+        kegiatan.sinkronkan_status_deadline()
 
         # update field base
         orm.nama_kegiatan = kegiatan.nama_kegiatan
         orm.deskripsi = kegiatan.deskripsi
         orm.deadline_pendaftaran = kegiatan.deadline_pendaftaran
         orm.kuota = kegiatan.kuota
-        orm.status_kegiatan = kegiatan.status_kegiatan
+        orm.status = kegiatan.status
         orm.tanggal_mulai = kegiatan.tanggal_mulai
         orm.tanggal_selesai = kegiatan.tanggal_selesai
         orm.syarat_ketentuan = kegiatan.syarat_ketentuan
@@ -234,14 +255,10 @@ class KegiatanRepository:
             orm.dokumen_dibutuhkan = self._dokumen_to_storage(kegiatan.dokumen_dibutuhkan)
         elif isinstance(kegiatan, Lomba) and isinstance(orm, LombaORM):
             orm.bidang = kegiatan.bidang
-            orm.tingkat_lomba = kegiatan.tingkat_lomba
-            orm.jenis_peserta = kegiatan.jenis_peserta
-            orm.jumlah_anggota = kegiatan.jumlah_anggota
-            orm.hadiah = kegiatan.hadiah
+            orm.poster = kegiatan.poster
         elif isinstance(kegiatan, StudiIndependen) and isinstance(orm, StudiIndependenORM):
-            orm.kurikulum = kegiatan.kurikulum
-            orm.metode_pembelajaran = kegiatan.metode_pembelajaran
-            orm.benefit = kegiatan.benefit
+            orm.bidang = kegiatan.bidang
+            orm.poster = kegiatan.poster
 
         return kegiatan
 

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_mahasiswa, get_current_mitra, get_current_user
 from app.domain.exceptions import ForbiddenActionError
-from app.domain.kegiatan import DokumenLamaran
+from app.domain.kegiatan import DokumenLamaran, Lomba, Magang, StudiIndependen
 from app.domain.lamaran import Lamaran, StatusLamaran
 from app.domain.mahasiswa import Mahasiswa
 from app.domain.mitra import Mitra
@@ -25,7 +25,7 @@ from app.schemas import (
     LamaranResponse,
     LamaranStatusUpdate,
 )
-from app.schemas.kegiatan import KegiatanListResponse
+from app.schemas.kegiatan import LombaResponse, MagangResponse, StudiIndependenResponse
 from app.schemas.mahasiswa import MahasiswaResponse
 from app.uploads import DOCUMENT_EXTENSIONS, save_upload_file
 
@@ -73,8 +73,18 @@ def _detail_response(lamaran: Lamaran, db: Session) -> dict:
     return {
         **LamaranResponse.model_validate(lamaran).model_dump(),
         "mahasiswa": MahasiswaResponse.model_validate(mhs).model_dump(),
-        "kegiatan": KegiatanListResponse.model_validate(kegiatan).model_dump(),
+        "kegiatan": _kegiatan_response(kegiatan),
     }
+
+
+def _kegiatan_response(kegiatan) -> dict:
+    if isinstance(kegiatan, Magang):
+        return MagangResponse.model_validate(kegiatan).model_dump()
+    if isinstance(kegiatan, Lomba):
+        return LombaResponse.model_validate(kegiatan).model_dump()
+    if isinstance(kegiatan, StudiIndependen):
+        return StudiIndependenResponse.model_validate(kegiatan).model_dump()
+    raise HTTPException(status_code=500, detail="Tipe kegiatan tidak dikenali")
 
 
 @router.post("/{mbkm_id}/upload-berkas")
@@ -120,7 +130,7 @@ def buat_lamaran(
     if not kegiatan.is_pendaftaran_dibuka():
         raise HTTPException(
             status_code=400,
-            detail=f"Pendaftaran kegiatan ini {kegiatan.status_kegiatan.value}",
+            detail=f"Pendaftaran kegiatan ini {kegiatan.status.value}",
         )
     if kegiatan.is_deadline_lewat():
         raise HTTPException(status_code=400, detail="Deadline pendaftaran sudah lewat")

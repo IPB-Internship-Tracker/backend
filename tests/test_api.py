@@ -28,22 +28,93 @@ class TestRoot:
         assert body["status"] == "ok"
 
 
+class TestOpenAPI:
+    def test_lomba_dan_studi_independen_schema_tidak_memuat_field_magang(self, client):
+        r = client.get("/openapi.json")
+        assert r.status_code == 200
+        openapi = r.json()
+        schemas = openapi["components"]["schemas"]
+        expected_create_fields = {
+            "nama_kegiatan",
+            "poster",
+            "deskripsi",
+            "deadline_pendaftaran",
+            "tanggal_mulai",
+            "tanggal_selesai",
+            "bidang",
+        }
+        expected_response_fields = {
+            "mbkm_id",
+            "mitra_id",
+            "nama_kegiatan",
+            "poster",
+            "deskripsi",
+            "kategori_mbkm",
+            "deadline_pendaftaran",
+            "status",
+            "tanggal_mulai",
+            "tanggal_selesai",
+            "bidang",
+        }
+
+        assert set(schemas["LombaCreate"]["properties"]) == expected_create_fields
+        assert set(schemas["StudiIndependenCreate"]["properties"]) == expected_create_fields
+        assert set(schemas["LombaResponse"]["properties"]) == expected_response_fields
+        assert set(schemas["StudiIndependenResponse"]["properties"]) == expected_response_fields
+
+        assert schemas["StatusKegiatan"]["enum"] == [
+            "Registrasi Dibuka",
+            "Registrasi Ditutup",
+        ]
+        assert "StatusRegistrasi" not in schemas
+        assert "status" in schemas["MagangResponse"]["properties"]
+        assert "status_kegiatan" not in schemas["MagangResponse"]["properties"]
+        assert "status_kegiatan" not in schemas["MagangUpdate"]["properties"]
+        list_params = openapi["paths"]["/kegiatan/"]["get"]["parameters"]
+        params = {parameter["name"] for parameter in list_params}
+        assert "status" in params
+        assert "status_kegiatan" not in params
+        status_param = next(parameter for parameter in list_params if parameter["name"] == "status")
+        assert status_param["schema"]["anyOf"][0]["$ref"].endswith("/StatusKegiatan")
+        assert "/kegiatan/{mbkm_id}/tutup-pendaftaran" not in openapi["paths"]
+        assert "KegiatanListResponse" not in schemas
+        assert "angkatan" not in schemas["MahasiswaRegister"]["properties"]
+        assert "angkatan" not in schemas["MahasiswaUpdate"]["properties"]
+        assert "angkatan" not in schemas["MahasiswaResponse"]["properties"]
+        assert "foto_profile" not in schemas["MahasiswaRegister"]["properties"]
+        assert "foto_profile" in schemas["MahasiswaUpdate"]["properties"]
+        assert "foto_profile" in schemas["MahasiswaResponse"]["properties"]
+        user_fields = {"user_id", "nama", "email", "role", "created_at"}
+        assert user_fields.issubset(schemas["MahasiswaResponse"]["properties"])
+        assert user_fields.issubset(schemas["MitraResponse"]["properties"])
+
+
 class TestRegister:
     def test_register_mahasiswa(self, client):
         r = client.post("/auth/register/mahasiswa", json={
             "nama": "Budi", "email": "budi@apps.ipb.ac.id",
             "password": "rahasia123", "nim": "G6401231033",
-            "fakultas": "Ilkom", "program_studi": "Ilkom", "angkatan": 2023,
+            "fakultas": "Ilkom", "program_studi": "Ilkom",
             "semester": 3,
         })
         assert r.status_code == 201
-        assert r.json()["nim"] == "G6401231033"
-        assert r.json()["semester"] == 3
+        body = r.json()
+        assert body["nim"] == "G6401231033"
+        assert body["semester"] == 3
+        assert body["foto_profile"] is None
+        assert "angkatan" not in body
 
     def test_register_mahasiswa_email_gmail_ditolak(self, client):
         r = client.post("/auth/register/mahasiswa", json={
             "nama": "X", "email": "x@gmail.com", "password": "12345678",
-            "nim": "A2024001001", "fakultas": "Ilkom", "program_studi": "Ilkom", "angkatan": 2023,
+            "nim": "A2024001001", "fakultas": "Ilkom", "program_studi": "Ilkom",
+        })
+        assert r.status_code == 422
+
+    def test_register_mahasiswa_email_non_apps_ipb_ditolak(self, client):
+        r = client.post("/auth/register/mahasiswa", json={
+            "nama": "X", "email": "x@student.ipb.ac.id", "password": "12345678",
+            "nim": "A2024001001", "fakultas": "Ilkom", "program_studi": "Ilkom",
         })
         assert r.status_code == 422
 
@@ -51,7 +122,7 @@ class TestRegister:
         r = client.post("/auth/register/mahasiswa", json={
             "nama": "Lain", "email": "budi@apps.ipb.ac.id",  # sudah ada
             "password": "rahasia123", "nim": "B6402231034",
-            "fakultas": "Ilkom", "program_studi": "Ilkom", "angkatan": 2023,
+            "fakultas": "Ilkom", "program_studi": "Ilkom",
         })
         assert r.status_code == 409
         assert "Email sudah terdaftar" in r.json()["detail"]
@@ -60,7 +131,7 @@ class TestRegister:
         r = client.post("/auth/register/mahasiswa", json={
             "nama": "Lain", "email": "lain@apps.ipb.ac.id",
             "password": "rahasia123", "nim": "G6401231033",  # sudah ada
-            "fakultas": "Ilkom", "program_studi": "Ilkom", "angkatan": 2023,
+            "fakultas": "Ilkom", "program_studi": "Ilkom",
         })
         assert r.status_code == 409
         assert "NIM sudah terdaftar" in r.json()["detail"]
@@ -248,7 +319,8 @@ class TestKegiatanCRUD:
     def test_mitra_buat_kegiatan_magang(self, client, magang_kegiatan):
         assert magang_kegiatan["nama_kegiatan"] == "Magang Testing"
         assert magang_kegiatan["kategori_mbkm"] == "magang"
-        assert magang_kegiatan["status_kegiatan"] == "dibuka"
+        assert magang_kegiatan["status"] == "Registrasi Dibuka"
+        assert "status_kegiatan" not in magang_kegiatan
 
     def test_list_kegiatan_wajib_login(self, client, mahasiswa_token, magang_kegiatan, auth_header):
         r = client.get("/kegiatan/")
@@ -285,21 +357,261 @@ class TestKegiatanCRUD:
         assert body["bidang"] == "Information Technology"
         assert body["gaji_perbulan"] == 2_000_000
         assert body["narahubung"] == "HR Testing"
+        assert body["status"] == "Registrasi Dibuka"
+        assert "status_kegiatan" not in body
 
     def test_mitra_buat_lomba(self, client, mitra_token, auth_header):
         r = client.post("/kegiatan/lomba", json={
             "nama_kegiatan": "Lomba X", "deskripsi": "Lomba bergengsi",
-            "deadline_pendaftaran": "2099-06-01", "kuota": 10,
+            "deadline_pendaftaran": "2099-06-01",
             "tanggal_mulai": "2099-07-01", "tanggal_selesai": "2099-09-01",
-            "syarat_ketentuan": "Mahasiswa aktif",
-            "narahubung": "Panitia Lomba",
-            "info_lebih_lanjut": "https://example.com/lomba",
-            "bidang": "IT", "tingkat_lomba": "Nasional",
-            "jenis_peserta": "Tim", "jumlah_anggota": 3,
-            "hadiah": "Uang + sertifikat",
+            "bidang": "IT",
+            "poster": "https://example.com/poster-lomba.png",
         }, headers=auth_header(mitra_token))
         assert r.status_code == 201
-        assert r.json()["hadiah"] == "Uang + sertifikat"
+        body = r.json()
+        assert body["bidang"] == "IT"
+        assert body["poster"] == "https://example.com/poster-lomba.png"
+        assert body["status"] == "Registrasi Dibuka"
+        assert "narahubung" not in body
+        assert "status_kegiatan" not in body
+        assert "kuota" not in body
+        assert "syarat_ketentuan" not in body
+        assert "info_lebih_lanjut" not in body
+        assert "tingkat_lomba" not in body
+        assert "jenis_peserta" not in body
+        assert "jumlah_anggota" not in body
+        assert "hadiah" not in body
+
+        r = client.get(
+            f"/kegiatan/{body['mbkm_id']}",
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 200
+        detail = r.json()
+        assert detail["kategori_mbkm"] == "lomba"
+        assert detail["poster"] == "https://example.com/poster-lomba.png"
+        assert detail["status"] == "Registrasi Dibuka"
+        assert "narahubung" not in detail
+        assert "status_kegiatan" not in detail
+        assert "kuota" not in detail
+        assert "syarat_ketentuan" not in detail
+        assert "info_lebih_lanjut" not in detail
+        assert "tingkat_lomba" not in detail
+        assert "jenis_peserta" not in detail
+        assert "jumlah_anggota" not in detail
+        assert "hadiah" not in detail
+
+        r = client.get("/kegiatan/?kategori=lomba", headers=auth_header(mitra_token))
+        assert r.status_code == 200
+        listed = r.json()[0]
+        assert listed["poster"] == "https://example.com/poster-lomba.png"
+        assert listed["status"] == "Registrasi Dibuka"
+        assert "narahubung" not in listed
+        assert "status_kegiatan" not in listed
+        assert "kuota" not in listed
+        assert "syarat_ketentuan" not in listed
+        assert "info_lebih_lanjut" not in listed
+        assert "tingkat_lomba" not in listed
+        assert "jenis_peserta" not in listed
+        assert "jumlah_anggota" not in listed
+        assert "hadiah" not in listed
+
+    def test_mitra_buat_studi_independen(self, client, mitra_token, auth_header):
+        r = client.post("/kegiatan/studi-independen", json={
+            "nama_kegiatan": "Studi Independen Backend",
+            "deskripsi": "Belajar backend intensif bersama mentor",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "Backend",
+            "poster": "https://example.com/poster-studi.png",
+        }, headers=auth_header(mitra_token))
+        assert r.status_code == 201
+        body = r.json()
+        assert body["bidang"] == "Backend"
+        assert body["poster"] == "https://example.com/poster-studi.png"
+        assert body["status"] == "Registrasi Dibuka"
+        assert "narahubung" not in body
+        assert "status_kegiatan" not in body
+        assert "kuota" not in body
+        assert "syarat_ketentuan" not in body
+        assert "info_lebih_lanjut" not in body
+        assert "kurikulum" not in body
+        assert "metode_pembelajaran" not in body
+        assert "benefit" not in body
+
+    def test_status_registrasi_semua_kegiatan_otomatis(
+        self, client, mitra_token, auth_header,
+    ):
+        r = client.post("/kegiatan/magang", json={
+            "nama_kegiatan": "Magang Lama",
+            "deskripsi": "Magang dengan deadline yang sudah lewat",
+            "deadline_pendaftaran": "2020-06-01",
+            "kuota": 5,
+            "tanggal_mulai": "2020-07-01",
+            "tanggal_selesai": "2020-09-01",
+            "syarat_ketentuan": "IPK minimal 3.0",
+            "narahubung": "HR Testing",
+            "info_lebih_lanjut": "https://example.com/magang-lama",
+            "bidang": "Information Technology",
+            "posisi": "Backend Developer",
+            "nama_perusahaan": "PT Testing Corp",
+            "logo_url": "https://example.com/logo.png",
+            "penempatan": "Hybrid",
+            "kota_lokasi": "Bogor",
+            "alamat_lengkap": "Jl. Test No. 1, Bogor",
+            "tipe_gaji": "Paid",
+            "gaji_perbulan": 2000000,
+            "dokumen_dibutuhkan": ["Curriculum Vitae (CV)", "Transkrip Nilai"],
+        }, headers=auth_header(mitra_token))
+        assert r.status_code == 201, r.text
+        assert r.json()["status"] == "Registrasi Ditutup"
+
+        r = client.post("/kegiatan/lomba", json={
+            "nama_kegiatan": "Lomba Lama",
+            "deskripsi": "Lomba dengan deadline yang sudah lewat",
+            "deadline_pendaftaran": "2020-06-01",
+            "tanggal_mulai": "2020-07-01",
+            "tanggal_selesai": "2020-09-01",
+            "bidang": "IT",
+            "poster": "https://example.com/lomba-lama.png",
+        }, headers=auth_header(mitra_token))
+        assert r.status_code == 201, r.text
+        assert r.json()["status"] == "Registrasi Ditutup"
+
+        r = client.post("/kegiatan/studi-independen", json={
+            "nama_kegiatan": "Studi Lama",
+            "deskripsi": "Studi dengan deadline yang sudah lewat",
+            "deadline_pendaftaran": "2020-06-01",
+            "tanggal_mulai": "2020-07-01",
+            "tanggal_selesai": "2020-09-01",
+            "bidang": "Backend",
+            "poster": "https://example.com/studi-lama.png",
+        }, headers=auth_header(mitra_token))
+        assert r.status_code == 201, r.text
+        assert r.json()["status"] == "Registrasi Ditutup"
+
+    def test_mitra_update_lomba_dan_studi_independen_miliknya(
+        self, client, mitra_token, auth_header,
+    ):
+        lomba = client.post("/kegiatan/lomba", json={
+            "nama_kegiatan": "Lomba Update",
+            "deskripsi": "Lomba untuk test update",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "IT",
+            "poster": "https://example.com/lomba-awal.png",
+        }, headers=auth_header(mitra_token)).json()
+
+        r = client.patch(
+            f"/kegiatan/lomba/{lomba['mbkm_id']}",
+            json={
+                "bidang": "Data",
+                "poster": "https://example.com/lomba-baru.png",
+                "status": "Registrasi Ditutup",
+            },
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["bidang"] == "Data"
+        assert r.json()["poster"] == "https://example.com/lomba-baru.png"
+        assert r.json()["status"] == "Registrasi Ditutup"
+
+        studi = client.post("/kegiatan/studi-independen", json={
+            "nama_kegiatan": "Studi Update",
+            "deskripsi": "Studi independen untuk test update",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "Backend",
+            "poster": "https://example.com/studi-awal.png",
+        }, headers=auth_header(mitra_token)).json()
+
+        r = client.patch(
+            f"/kegiatan/studi-independen/{studi['mbkm_id']}",
+            json={
+                "bidang": "AI",
+                "poster": "https://example.com/studi-baru.png",
+                "status": "Registrasi Ditutup",
+            },
+            headers=auth_header(mitra_token),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["bidang"] == "AI"
+        assert r.json()["poster"] == "https://example.com/studi-baru.png"
+        assert r.json()["status"] == "Registrasi Ditutup"
+
+    def test_mahasiswa_tidak_bisa_mutasi_lomba_dan_studi_independen(
+        self, client, mitra_token, mahasiswa_token, auth_header,
+    ):
+        lomba = client.post("/kegiatan/lomba", json={
+            "nama_kegiatan": "Lomba Role",
+            "deskripsi": "Lomba untuk test role",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "IT",
+            "poster": "https://example.com/lomba-role.png",
+        }, headers=auth_header(mitra_token)).json()
+        studi = client.post("/kegiatan/studi-independen", json={
+            "nama_kegiatan": "Studi Role",
+            "deskripsi": "Studi independen untuk test role",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "Backend",
+            "poster": "https://example.com/studi-role.png",
+        }, headers=auth_header(mitra_token)).json()
+
+        r = client.post("/kegiatan/lomba", json={
+            "nama_kegiatan": "Lomba Mahasiswa",
+            "deskripsi": "Mahasiswa tidak boleh membuat lomba",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "IT",
+            "poster": "https://example.com/lomba-mahasiswa.png",
+        }, headers=auth_header(mahasiswa_token))
+        assert r.status_code == 403
+
+        r = client.post("/kegiatan/studi-independen", json={
+            "nama_kegiatan": "Studi Mahasiswa",
+            "deskripsi": "Mahasiswa tidak boleh membuat studi",
+            "deadline_pendaftaran": "2099-06-01",
+            "tanggal_mulai": "2099-07-01",
+            "tanggal_selesai": "2099-09-01",
+            "bidang": "Backend",
+            "poster": "https://example.com/studi-mahasiswa.png",
+        }, headers=auth_header(mahasiswa_token))
+        assert r.status_code == 403
+
+        r = client.patch(
+            f"/kegiatan/lomba/{lomba['mbkm_id']}",
+            json={"bidang": "Data"},
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 403
+
+        r = client.patch(
+            f"/kegiatan/studi-independen/{studi['mbkm_id']}",
+            json={"bidang": "AI"},
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 403
+
+        r = client.delete(
+            f"/kegiatan/{lomba['mbkm_id']}",
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 403
+
+        r = client.delete(
+            f"/kegiatan/{studi['mbkm_id']}",
+            headers=auth_header(mahasiswa_token),
+        )
+        assert r.status_code == 403
 
     def test_tutup_pendaftaran(self, client, mitra_token, magang_kegiatan, auth_header):
         r = client.post(
@@ -307,7 +619,8 @@ class TestKegiatanCRUD:
             headers=auth_header(mitra_token),
         )
         assert r.status_code == 200
-        assert r.json()["status_kegiatan"] == "ditutup"
+        assert r.json()["status"] == "Registrasi Ditutup"
+        assert "status_kegiatan" not in r.json()
 
     def test_mitra_lain_tidak_bisa_tutup_kegiatan_orang_lain(
         self, client, magang_kegiatan, auth_header,
@@ -513,18 +826,37 @@ class TestLamaranFlow:
     def test_daftar_ke_kegiatan_ditutup_ditolak(
         self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header,
     ):
-        # mitra tutup pendaftaran dulu
-        client.post(
-            f"/kegiatan/{magang_kegiatan['mbkm_id']}/tutup-pendaftaran",
-            headers=auth_header(mitra_token),
-        )
+        r = client.post("/kegiatan/magang", json={
+            "nama_kegiatan": "Magang Ditutup",
+            "deskripsi": "Magang dengan deadline yang sudah lewat",
+            "deadline_pendaftaran": "2020-06-01",
+            "kuota": 5,
+            "tanggal_mulai": "2020-07-01",
+            "tanggal_selesai": "2020-09-01",
+            "syarat_ketentuan": "IPK minimal 3.0",
+            "narahubung": "HR Testing",
+            "info_lebih_lanjut": "https://example.com/magang-ditutup",
+            "bidang": "Information Technology",
+            "posisi": "Backend Developer",
+            "nama_perusahaan": "PT Testing Corp",
+            "logo_url": "https://example.com/logo.png",
+            "penempatan": "Hybrid",
+            "kota_lokasi": "Bogor",
+            "alamat_lengkap": "Jl. Test No. 1, Bogor",
+            "tipe_gaji": "Paid",
+            "gaji_perbulan": 2000000,
+            "dokumen_dibutuhkan": ["Curriculum Vitae (CV)", "Transkrip Nilai"],
+        }, headers=auth_header(mitra_token))
+        assert r.status_code == 201, r.text
+        kegiatan_ditutup = r.json()
+
         # mahasiswa coba daftar
         r = client.post("/lamaran/", json={
-            "mbkm_id": magang_kegiatan["mbkm_id"],
+            "mbkm_id": kegiatan_ditutup["mbkm_id"],
             "berkas_pendaftaran": berkas_lamaran(),
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 400
-        assert "ditutup" in r.json()["detail"]
+        assert "ditutup" in r.json()["detail"].lower()
 
     def test_ubah_status_lamaran_bikin_notifikasi(
         self, client, mahasiswa_token, mitra_token, magang_kegiatan, auth_header,
@@ -780,12 +1112,15 @@ class TestProfilUpdate:
 
     def test_update_profil_mahasiswa(self, client, mahasiswa_token, auth_header):
         r = client.patch("/mahasiswa/me", json={
-            "nama": "Budi Updated", "angkatan": 2024,
+            "nama": "Budi Updated", "semester": 4,
+            "foto_profile": "https://example.com/foto-baru.jpg",
         }, headers=auth_header(mahasiswa_token))
         assert r.status_code == 200
         body = r.json()
         assert body["nama"] == "Budi Updated"
-        assert body["angkatan"] == 2024
+        assert body["semester"] == 4
+        assert body["foto_profile"] == "https://example.com/foto-baru.jpg"
+        assert "angkatan" not in body
 
     def test_update_profil_mitra(self, client, mitra_token, auth_header):
         r = client.patch("/mitra/me", json={

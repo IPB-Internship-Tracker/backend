@@ -13,6 +13,10 @@ from app.domain.kegiatan import (
     TipeGaji,
 )
 
+
+def _enum_values(enum_cls):
+    return [item.value for item in enum_cls]
+
 if TYPE_CHECKING:
     from app.models.mitra import MitraORM
     from app.models.lamaran import LamaranORM
@@ -30,8 +34,14 @@ class KegiatanMBKMORM(Base):
     kategori_mbkm: Mapped[KategoriMBKM] = mapped_column(Enum(KategoriMBKM), nullable=False)
     deadline_pendaftaran: Mapped[date] = mapped_column(Date, nullable=False)
     kuota: Mapped[int] = mapped_column(Integer, nullable=False)
-    status_kegiatan: Mapped[StatusKegiatan] = mapped_column(
-        Enum(StatusKegiatan), default=StatusKegiatan.DIBUKA, nullable=False
+    status: Mapped[StatusKegiatan] = mapped_column(
+        Enum(
+            StatusKegiatan,
+            name="statusregistrasikegiatan",
+            values_callable=_enum_values,
+        ),
+        default=StatusKegiatan.REGISTRASI_DIBUKA,
+        nullable=False,
     )
     tanggal_mulai: Mapped[date] = mapped_column(Date, nullable=False)
     tanggal_selesai: Mapped[date] = mapped_column(Date, nullable=False)
@@ -81,10 +91,7 @@ class LombaORM(KegiatanMBKMORM):
         ForeignKey("kegiatan_mbkm.mbkm_id", ondelete="CASCADE"), primary_key=True
     )
     bidang: Mapped[str] = mapped_column(String(100), nullable=False)
-    tingkat_lomba: Mapped[str] = mapped_column(String(100), nullable=False)
-    jenis_peserta: Mapped[str] = mapped_column(String(50), nullable=False)
-    jumlah_anggota: Mapped[int] = mapped_column(Integer, nullable=False)
-    hadiah: Mapped[str] = mapped_column(String(255), nullable=False)
+    poster: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
     __mapper_args__ = {"polymorphic_identity": KategoriMBKM.LOMBA}
 
@@ -95,8 +102,7 @@ class StudiIndependenORM(KegiatanMBKMORM):
     mbkm_id: Mapped[int] = mapped_column(
         ForeignKey("kegiatan_mbkm.mbkm_id", ondelete="CASCADE"), primary_key=True
     )
-    kurikulum: Mapped[str] = mapped_column(Text, nullable=False)
-    metode_pembelajaran: Mapped[str] = mapped_column(String(100), nullable=False)
-    benefit: Mapped[str] = mapped_column(Text, nullable=False)
+    bidang: Mapped[str] = mapped_column(String(100), nullable=False)
+    poster: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
     __mapper_args__ = {"polymorphic_identity": KategoriMBKM.STUDI_INDEPENDEN}

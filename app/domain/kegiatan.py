@@ -7,8 +7,6 @@ import enum
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.domain.exceptions import ForbiddenActionError
-
 
 class KategoriMBKM(str, enum.Enum):
     MAGANG = "magang"
@@ -17,10 +15,8 @@ class KategoriMBKM(str, enum.Enum):
 
 
 class StatusKegiatan(str, enum.Enum):
-    DIBUKA = "dibuka"
-    DITUTUP = "ditutup"
-    BERLANGSUNG = "berlangsung"
-    SELESAI = "selesai"
+    REGISTRASI_DIBUKA = "Registrasi Dibuka"
+    REGISTRASI_DITUTUP = "Registrasi Ditutup"
 
 
 class BidangMagang(str, enum.Enum):
@@ -74,8 +70,32 @@ class KegiatanMBKM:
     syarat_ketentuan: str
     narahubung: str
     info_lebih_lanjut: str
-    status_kegiatan: StatusKegiatan = StatusKegiatan.DIBUKA
+    status: StatusKegiatan = StatusKegiatan.REGISTRASI_DIBUKA
     mbkm_id: int | None = None
+
+    def __post_init__(self) -> None:
+        self.status = self._normalisasi_status(self.status)
+        self.sinkronkan_status_deadline()
+
+    @staticmethod
+    def _normalisasi_status(status: StatusKegiatan | str) -> StatusKegiatan:
+        if isinstance(status, StatusKegiatan):
+            return status
+        legacy_status = {
+            "DIBUKA": StatusKegiatan.REGISTRASI_DIBUKA,
+            "dibuka": StatusKegiatan.REGISTRASI_DIBUKA,
+            "REGISTRASI_DIBUKA": StatusKegiatan.REGISTRASI_DIBUKA,
+            "Registrasi Dibuka": StatusKegiatan.REGISTRASI_DIBUKA,
+            "DITUTUP": StatusKegiatan.REGISTRASI_DITUTUP,
+            "ditutup": StatusKegiatan.REGISTRASI_DITUTUP,
+            "BERLANGSUNG": StatusKegiatan.REGISTRASI_DITUTUP,
+            "berlangsung": StatusKegiatan.REGISTRASI_DITUTUP,
+            "SELESAI": StatusKegiatan.REGISTRASI_DITUTUP,
+            "selesai": StatusKegiatan.REGISTRASI_DITUTUP,
+            "REGISTRASI_DITUTUP": StatusKegiatan.REGISTRASI_DITUTUP,
+            "Registrasi Ditutup": StatusKegiatan.REGISTRASI_DITUTUP,
+        }
+        return legacy_status.get(str(status), StatusKegiatan.REGISTRASI_DIBUKA)
 
     @property
     def kegiatan_id(self) -> int | None:
@@ -112,22 +132,28 @@ class KegiatanMBKM:
     def edit(self, **perubahan) -> None:
         for field_name, value in perubahan.items():
             setattr(self, field_name, value)
+        self.status = self._normalisasi_status(self.status)
+        self.sinkronkan_status_deadline()
 
     def hapus(self) -> "KegiatanMBKM":
         """Validasi domain sebelum repository menghapus entity."""
-        if self.status_kegiatan == StatusKegiatan.BERLANGSUNG:
-            raise ForbiddenActionError("Kegiatan yang sedang berlangsung tidak bisa dihapus")
+        self.sinkronkan_status_deadline()
         return self
 
     def tutup_pendaftaran(self) -> None:
-        if self.status_kegiatan in (StatusKegiatan.SELESAI,):
-            raise ForbiddenActionError(
-                "Kegiatan yang sudah selesai tidak bisa diubah status pendaftarannya"
-            )
-        self.status_kegiatan = StatusKegiatan.DITUTUP
+        """Kompatibilitas aksi lama untuk menutup registrasi secara manual."""
+        self.status = StatusKegiatan.REGISTRASI_DITUTUP
 
     def is_pendaftaran_dibuka(self) -> bool:
-        return self.status_kegiatan == StatusKegiatan.DIBUKA
+        self.sinkronkan_status_deadline()
+        return self.status == StatusKegiatan.REGISTRASI_DIBUKA
+
+    def sinkronkan_status_deadline(
+        self, hari_ini: date | None = None
+    ) -> StatusKegiatan:
+        if self.is_deadline_lewat(hari_ini):
+            self.status = StatusKegiatan.REGISTRASI_DITUTUP
+        return self.status
 
     def is_deadline_lewat(self, hari_ini: date | None = None) -> bool:
         hari_ini = hari_ini or date.today()
@@ -172,14 +198,10 @@ class Magang(KegiatanMBKM):
 @dataclass
 class Lomba(KegiatanMBKM):
     bidang: str = ""
-    tingkat_lomba: str = ""
-    jenis_peserta: str = ""
-    jumlah_anggota: int = 1
-    hadiah: str = ""
+    poster: str = ""
 
 
 @dataclass
 class StudiIndependen(KegiatanMBKM):
-    kurikulum: str = ""
-    metode_pembelajaran: str = ""
-    benefit: str = ""
+    bidang: str = ""
+    poster: str = ""

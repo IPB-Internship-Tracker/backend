@@ -45,11 +45,14 @@ class MitraUpdate(BaseModel):
     kontak: str | None = Field(default=None, min_length=5, max_length=50)
 
 
-class MitraResponse(_MitraBase):
+class MitraResponse(UserResponse):
     model_config = ConfigDict(from_attributes=True)
 
     mitra_id: int
-    user_id: int
+    nama_instansi: str
+    jenis_instansi: str
+    alamat: str
+    kontak: str
 
 
 class MitraDetailResponse(MitraResponse):

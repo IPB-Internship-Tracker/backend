@@ -46,6 +46,7 @@ class UserRepository:
         )
         self.db.add(orm)
         self.db.flush()  # supaya dapat user_id tanpa commit
+        self.db.refresh(orm)
         user.user_id = orm.user_id
         user.created_at = orm.created_at
         return user

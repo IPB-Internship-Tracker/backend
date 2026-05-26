@@ -12,19 +12,15 @@ from app.domain.kegiatan import (
 )
 
 
-class _KegiatanBase(BaseModel):
+class _KegiatanCommonBase(BaseModel):
     nama_kegiatan: str = Field(min_length=3, max_length=200)
     deskripsi: str = Field(min_length=10)
     deadline_pendaftaran: date
-    kuota: int = Field(gt=0, le=10000)
     tanggal_mulai: date
     tanggal_selesai: date
-    syarat_ketentuan: str = Field(min_length=5)
-    narahubung: str = Field(min_length=2, max_length=150)
-    info_lebih_lanjut: str = Field(min_length=2)
 
     @model_validator(mode="after")
-    def validasi_tanggal(self) -> "_KegiatanBase":
+    def validasi_tanggal(self) -> "_KegiatanCommonBase":
         if self.tanggal_selesai < self.tanggal_mulai:
             raise ValueError("tanggal_selesai tidak boleh sebelum tanggal_mulai")
         if self.deadline_pendaftaran > self.tanggal_mulai:
@@ -32,20 +28,30 @@ class _KegiatanBase(BaseModel):
         return self
 
 
-class _KegiatanUpdateBase(BaseModel):
+class _KegiatanBase(_KegiatanCommonBase):
+    narahubung: str = Field(min_length=2, max_length=150)
+    kuota: int = Field(gt=0, le=10000)
+    syarat_ketentuan: str = Field(min_length=5)
+    info_lebih_lanjut: str = Field(min_length=2)
+
+
+class _KegiatanCommonUpdateBase(BaseModel):
     nama_kegiatan: str | None = Field(default=None, min_length=3, max_length=200)
     deskripsi: str | None = Field(default=None, min_length=10)
     deadline_pendaftaran: date | None = None
-    kuota: int | None = Field(default=None, gt=0, le=10000)
-    status_kegiatan: StatusKegiatan | None = None
+    status: StatusKegiatan | None = None
     tanggal_mulai: date | None = None
     tanggal_selesai: date | None = None
-    syarat_ketentuan: str | None = Field(default=None, min_length=5)
+
+
+class _KegiatanUpdateBase(_KegiatanCommonUpdateBase):
     narahubung: str | None = Field(default=None, min_length=2, max_length=150)
+    kuota: int | None = Field(default=None, gt=0, le=10000)
+    syarat_ketentuan: str | None = Field(default=None, min_length=5)
     info_lebih_lanjut: str | None = Field(default=None, min_length=2)
 
 
-class _KegiatanResponseBase(BaseModel):
+class _KegiatanCommonResponseBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     mbkm_id: int
@@ -54,12 +60,15 @@ class _KegiatanResponseBase(BaseModel):
     deskripsi: str
     kategori_mbkm: KategoriMBKM
     deadline_pendaftaran: date
-    kuota: int
-    status_kegiatan: StatusKegiatan
+    status: StatusKegiatan
     tanggal_mulai: date
     tanggal_selesai: date
-    syarat_ketentuan: str
+
+
+class _KegiatanResponseBase(_KegiatanCommonResponseBase):
     narahubung: str
+    kuota: int
+    syarat_ketentuan: str
     info_lebih_lanjut: str
 
 
@@ -121,47 +130,74 @@ class MagangResponse(_KegiatanResponseBase):
 
 
 # ---------- Lomba ----------
-class LombaCreate(_KegiatanBase):
+class _LombaStudiBase(BaseModel):
+    nama_kegiatan: str = Field(min_length=3, max_length=200)
+    poster: str = Field(min_length=1, max_length=255)
+    deskripsi: str = Field(min_length=10)
+    deadline_pendaftaran: date
+    tanggal_mulai: date
+    tanggal_selesai: date
     bidang: str = Field(min_length=2, max_length=100)
-    tingkat_lomba: str = Field(min_length=2, max_length=100)
-    jenis_peserta: str = Field(min_length=2, max_length=50)
-    jumlah_anggota: int = Field(ge=1, le=100)
-    hadiah: str = Field(min_length=2, max_length=255)
+
+    @model_validator(mode="after")
+    def validasi_tanggal(self) -> "_LombaStudiBase":
+        if self.tanggal_selesai < self.tanggal_mulai:
+            raise ValueError("tanggal_selesai tidak boleh sebelum tanggal_mulai")
+        if self.deadline_pendaftaran > self.tanggal_mulai:
+            raise ValueError("deadline_pendaftaran tidak boleh setelah tanggal_mulai")
+        return self
 
 
-class LombaUpdate(_KegiatanUpdateBase):
+class _LombaStudiUpdateBase(BaseModel):
+    nama_kegiatan: str | None = Field(default=None, min_length=3, max_length=200)
+    poster: str | None = Field(default=None, min_length=1, max_length=255)
+    deskripsi: str | None = Field(default=None, min_length=10)
+    deadline_pendaftaran: date | None = None
+    status: StatusKegiatan | None = None
+    tanggal_mulai: date | None = None
+    tanggal_selesai: date | None = None
     bidang: str | None = Field(default=None, min_length=2, max_length=100)
-    tingkat_lomba: str | None = Field(default=None, min_length=2, max_length=100)
-    jenis_peserta: str | None = Field(default=None, min_length=2, max_length=50)
-    jumlah_anggota: int | None = Field(default=None, ge=1, le=100)
-    hadiah: str | None = Field(default=None, min_length=2, max_length=255)
 
 
-class LombaResponse(_KegiatanResponseBase):
+class _LombaStudiResponseBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    mbkm_id: int
+    mitra_id: int
+    nama_kegiatan: str
+    poster: str
+    deskripsi: str
+    kategori_mbkm: KategoriMBKM
+    deadline_pendaftaran: date
+    status: StatusKegiatan
+    tanggal_mulai: date
+    tanggal_selesai: date
     bidang: str
-    tingkat_lomba: str
-    jenis_peserta: str
-    jumlah_anggota: int
-    hadiah: str
+
+
+class LombaCreate(_LombaStudiBase):
+    pass
+
+
+class LombaUpdate(_LombaStudiUpdateBase):
+    pass
+
+
+class LombaResponse(_LombaStudiResponseBase):
+    pass
 
 
 # ---------- Studi Independen ----------
-class StudiIndependenCreate(_KegiatanBase):
-    kurikulum: str = Field(min_length=5)
-    metode_pembelajaran: str = Field(min_length=2, max_length=100)
-    benefit: str = Field(min_length=5)
+class StudiIndependenCreate(_LombaStudiBase):
+    pass
 
 
-class StudiIndependenUpdate(_KegiatanUpdateBase):
-    kurikulum: str | None = Field(default=None, min_length=5)
-    metode_pembelajaran: str | None = Field(default=None, min_length=2, max_length=100)
-    benefit: str | None = Field(default=None, min_length=5)
+class StudiIndependenUpdate(_LombaStudiUpdateBase):
+    pass
 
 
-class StudiIndependenResponse(_KegiatanResponseBase):
-    kurikulum: str
-    metode_pembelajaran: str
-    benefit: str
+class StudiIndependenResponse(_LombaStudiResponseBase):
+    pass
 
 
 # ---------- Polymorphic list response ----------
@@ -172,9 +208,15 @@ class KegiatanListResponse(_KegiatanResponseBase):
     posisi: str | None = None
     nama_perusahaan: str | None = None
     logo_url: str | None = None
+    poster: str | None = None
     penempatan: PenempatanMagang | None = None
     kota_lokasi: str | None = None
     alamat_lengkap: str | None = None
     tipe_gaji: TipeGaji | None = None
     gaji_perbulan: float | None = None
     dokumen_dibutuhkan: list[DokumenLamaran | str] | None = None
+
+
+KegiatanResponse = (
+    MagangResponse | LombaResponse | StudiIndependenResponse
+)

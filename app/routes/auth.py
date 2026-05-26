@@ -60,11 +60,13 @@ def register_mahasiswa(data: MahasiswaRegister, db: Session = Depends(get_db)):
 
     new_mahasiswa = Mahasiswa(
         user_id=new_user.user_id,
-        nama=data.nama,
+        nama=new_user.nama,
+        email=new_user.email,
+        password_hash=new_user.password_hash,
+        created_at=new_user.created_at,
         nim=data.nim,
         fakultas=data.fakultas,
         program_studi=data.program_studi,
-        angkatan=data.angkatan,
         semester=data.semester,
     )
     new_mahasiswa = mahasiswa_repo.buat(new_mahasiswa)
@@ -95,6 +97,10 @@ def register_mitra(data: MitraRegister, db: Session = Depends(get_db)):
 
     new_mitra = Mitra(
         user_id=new_user.user_id,
+        nama=new_user.nama,
+        email=new_user.email,
+        password_hash=new_user.password_hash,
+        created_at=new_user.created_at,
         nama_instansi=data.nama_instansi,
         jenis_instansi=data.jenis_instansi,
         alamat=data.alamat,
