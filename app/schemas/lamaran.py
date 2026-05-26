@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.kegiatan import DokumenLamaran
 from app.domain.lamaran import StatusLamaran
-from app.schemas.kegiatan import KegiatanListResponse
+from app.schemas.kegiatan import KegiatanResponse
 from app.schemas.mahasiswa import MahasiswaResponse
 
 
@@ -47,4 +47,4 @@ class LamaranResponse(BaseModel):
 class LamaranDetailResponse(LamaranResponse):
     """Response dengan data mahasiswa dan kegiatan (untuk detail view)."""
     mahasiswa: MahasiswaResponse
-    kegiatan: KegiatanListResponse
+    kegiatan: KegiatanResponse
