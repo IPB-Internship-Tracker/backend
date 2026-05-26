@@ -39,6 +39,14 @@ MIGRATIONS = [
     ALTER COLUMN semester SET NOT NULL
     """,
     """
+    ALTER TABLE mahasiswa
+    DROP COLUMN IF EXISTS angkatan
+    """,
+    """
+    ALTER TABLE mahasiswa
+    ADD COLUMN IF NOT EXISTS foto_profile VARCHAR(255)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS kegiatan_draft (
         draft_id SERIAL PRIMARY KEY,
         mitra_id INTEGER NOT NULL REFERENCES mitra(mitra_id) ON DELETE CASCADE,
@@ -70,8 +78,85 @@ MIGRATIONS = [
     ALTER TABLE kegiatan_mbkm
     ALTER COLUMN info_lebih_lanjut SET NOT NULL
     """,
-    # Label enum lama dibiarkan agar migrasi aman, tetapi row lama dinormalisasi
-    # ke status yang dipakai aplikasi sekarang.
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_type WHERE typname = 'statusregistrasikegiatan'
+        ) THEN
+            CREATE TYPE statusregistrasikegiatan AS ENUM (
+                'Registrasi Dibuka',
+                'Registrasi Ditutup'
+            );
+        END IF;
+    END $$;
+    """,
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'kegiatan_mbkm'
+              AND column_name = 'status_kegiatan'
+        ) AND NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'kegiatan_mbkm'
+              AND column_name = 'status'
+        ) THEN
+            ALTER TABLE kegiatan_mbkm
+            ADD COLUMN status statusregistrasikegiatan;
+
+            UPDATE kegiatan_mbkm
+            SET status = CASE
+                WHEN deadline_pendaftaran < CURRENT_DATE
+                  OR status_kegiatan::text IN (
+                    'DITUTUP',
+                    'ditutup',
+                    'BERLANGSUNG',
+                    'berlangsung',
+                    'SELESAI',
+                    'selesai',
+                    'REGISTRASI_DITUTUP',
+                    'Registrasi Ditutup'
+                  )
+                THEN 'Registrasi Ditutup'::statusregistrasikegiatan
+                ELSE 'Registrasi Dibuka'::statusregistrasikegiatan
+            END;
+
+            ALTER TABLE kegiatan_mbkm
+            ALTER COLUMN status SET NOT NULL;
+
+            ALTER TABLE kegiatan_mbkm
+            ALTER COLUMN status SET DEFAULT 'Registrasi Dibuka'::statusregistrasikegiatan;
+
+            ALTER TABLE kegiatan_mbkm
+            DROP COLUMN status_kegiatan;
+        END IF;
+    END $$;
+    """,
+    """
+    UPDATE kegiatan_mbkm
+    SET status = 'Registrasi Ditutup'::statusregistrasikegiatan
+    WHERE deadline_pendaftaran < CURRENT_DATE
+      AND status <> 'Registrasi Ditutup'::statusregistrasikegiatan
+    """,
+    """
+    ALTER TABLE kegiatan_mbkm
+    ALTER COLUMN status SET DEFAULT 'Registrasi Dibuka'::statusregistrasikegiatan
+    """,
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM pg_type WHERE typname = 'statuskegiatan'
+        ) AND NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE udt_name = 'statuskegiatan'
+        ) THEN
+            DROP TYPE statuskegiatan;
+        END IF;
+    END $$;
+    """,
     """
     UPDATE lamaran
     SET status_pendaftaran = 'TELAH_MENDAFTAR'
@@ -103,6 +188,81 @@ MIGRATIONS = [
     """
     ALTER TABLE magang
     ADD COLUMN IF NOT EXISTS logo_url VARCHAR(255)
+    """,
+    """
+    ALTER TABLE lomba
+    ADD COLUMN IF NOT EXISTS poster VARCHAR(255)
+    """,
+    """
+    UPDATE lomba
+    SET poster = ''
+    WHERE poster IS NULL
+    """,
+    """
+    ALTER TABLE lomba
+    ALTER COLUMN poster SET NOT NULL
+    """,
+    """
+    ALTER TABLE lomba
+    DROP COLUMN IF EXISTS tingkat_lomba
+    """,
+    """
+    ALTER TABLE lomba
+    DROP COLUMN IF EXISTS jenis_peserta
+    """,
+    """
+    ALTER TABLE lomba
+    DROP COLUMN IF EXISTS jumlah_anggota
+    """,
+    """
+    ALTER TABLE lomba
+    DROP COLUMN IF EXISTS hadiah
+    """,
+    """
+    ALTER TABLE lomba
+    DROP COLUMN IF EXISTS link_pendaftaran
+    """,
+    """
+    ALTER TABLE studi_independen
+    ADD COLUMN IF NOT EXISTS bidang VARCHAR(100)
+    """,
+    """
+    UPDATE studi_independen
+    SET bidang = 'Umum'
+    WHERE bidang IS NULL
+    """,
+    """
+    ALTER TABLE studi_independen
+    ALTER COLUMN bidang SET NOT NULL
+    """,
+    """
+    ALTER TABLE studi_independen
+    ADD COLUMN IF NOT EXISTS poster VARCHAR(255)
+    """,
+    """
+    UPDATE studi_independen
+    SET poster = ''
+    WHERE poster IS NULL
+    """,
+    """
+    ALTER TABLE studi_independen
+    ALTER COLUMN poster SET NOT NULL
+    """,
+    """
+    ALTER TABLE studi_independen
+    DROP COLUMN IF EXISTS kurikulum
+    """,
+    """
+    ALTER TABLE studi_independen
+    DROP COLUMN IF EXISTS metode_pembelajaran
+    """,
+    """
+    ALTER TABLE studi_independen
+    DROP COLUMN IF EXISTS benefit
+    """,
+    """
+    ALTER TABLE studi_independen
+    DROP COLUMN IF EXISTS link_pendaftaran
     """,
     """
     ALTER TABLE magang
