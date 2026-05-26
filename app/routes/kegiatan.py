@@ -21,7 +21,7 @@ from app.schemas import (
     KegiatanDraftCreate,
     KegiatanDraftResponse,
     KegiatanDraftUpdate,
-    KegiatanListResponse,
+    KegiatanResponse,
     LombaCreate,
     LombaResponse,
     LombaUpdate,
@@ -35,6 +35,13 @@ from app.schemas import (
 
 
 router = APIRouter(prefix="/kegiatan", tags=["kegiatan"])
+
+_LOMBA_STUDI_DB_DEFAULTS = {
+    "kuota": 1,
+    "syarat_ketentuan": "",
+    "narahubung": "",
+    "info_lebih_lanjut": "",
+}
 
 
 def _get_milik_mitra(
@@ -68,6 +75,10 @@ def _format_validation_errors(exc: ValidationError) -> list[dict]:
     return errors
 
 
+def _with_lomba_studi_defaults(data: dict) -> dict:
+    return {**_LOMBA_STUDI_DB_DEFAULTS, **data}
+
+
 def _kegiatan_response(kegiatan: KegiatanMBKM) -> dict:
     if isinstance(kegiatan, Magang):
         return MagangResponse.model_validate(kegiatan).model_dump()
@@ -75,7 +86,7 @@ def _kegiatan_response(kegiatan: KegiatanMBKM) -> dict:
         return LombaResponse.model_validate(kegiatan).model_dump()
     if isinstance(kegiatan, StudiIndependen):
         return StudiIndependenResponse.model_validate(kegiatan).model_dump()
-    return KegiatanListResponse.model_validate(kegiatan).model_dump()
+    raise HTTPException(status_code=500, detail="Tipe kegiatan tidak dikenali")
 
 
 def _buat_kegiatan_dari_payload(
@@ -96,14 +107,14 @@ def _buat_kegiatan_dari_payload(
             return Lomba(
                 mitra_id=mitra.mitra_id,
                 kategori_mbkm=KategoriMBKM.LOMBA,
-                **data.model_dump(),
+                **_with_lomba_studi_defaults(data.model_dump()),
             )
         if kategori == KategoriMBKM.STUDI_INDEPENDEN:
             data = StudiIndependenCreate(**payload)
             return StudiIndependen(
                 mitra_id=mitra.mitra_id,
                 kategori_mbkm=KategoriMBKM.STUDI_INDEPENDEN,
-                **data.model_dump(),
+                **_with_lomba_studi_defaults(data.model_dump()),
             )
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_format_validation_errors(exc))
@@ -141,7 +152,7 @@ def buat_lomba(
     kegiatan = Lomba(
         mitra_id=mitra.mitra_id,
         kategori_mbkm=KategoriMBKM.LOMBA,
-        **data.model_dump(),
+        **_with_lomba_studi_defaults(data.model_dump()),
     )
     repo.buat(kegiatan)
     repo.commit()
@@ -158,7 +169,7 @@ def buat_studi_independen(
     kegiatan = StudiIndependen(
         mitra_id=mitra.mitra_id,
         kategori_mbkm=KategoriMBKM.STUDI_INDEPENDEN,
-        **data.model_dump(),
+        **_with_lomba_studi_defaults(data.model_dump()),
     )
     repo.buat(kegiatan)
     repo.commit()
@@ -228,7 +239,7 @@ def hapus_draft(
     repo.commit()
 
 
-@router.post("/draft/{draft_id}/publish", status_code=201)
+@router.post("/draft/{draft_id}/publish", response_model=KegiatanResponse, status_code=201)
 def publish_draft(
     draft_id: int,
     mitra: Mitra = Depends(get_current_mitra),
@@ -246,20 +257,23 @@ def publish_draft(
 
 
 # ---------- READ ----------
-@router.get("/", response_model=list[KegiatanListResponse])
+@router.get("/", response_model=list[KegiatanResponse])
 def list_kegiatan(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
     kategori: KategoriMBKM | None = None,
-    status_kegiatan: StatusKegiatan | None = None,
+    status: StatusKegiatan | None = None,
     mitra_id: int | None = None,
 ):
-    return KegiatanRepository(db).list(
-        kategori=kategori, status_kegiatan=status_kegiatan, mitra_id=mitra_id
+    kegiatan_list = KegiatanRepository(db).list(
+        kategori=kategori,
+        status=status,
+        mitra_id=mitra_id,
     )
+    return [_kegiatan_response(kegiatan) for kegiatan in kegiatan_list]
 
 
-@router.get("/{mbkm_id}")
+@router.get("/{mbkm_id}", response_model=KegiatanResponse)
 def detail_kegiatan(
     mbkm_id: int,
     db: Session = Depends(get_db),
@@ -329,7 +343,11 @@ def update_studi_independen(
 
 
 # ---------- ACTIONS ----------
-@router.post("/{mbkm_id}/tutup-pendaftaran", response_model=KegiatanListResponse)
+@router.post(
+    "/{mbkm_id}/tutup-pendaftaran",
+    response_model=KegiatanResponse,
+    include_in_schema=False,
+)
 def tutup_pendaftaran(
     mbkm_id: int,
     mitra: Mitra = Depends(get_current_mitra),
@@ -343,7 +361,7 @@ def tutup_pendaftaran(
         raise HTTPException(status_code=400, detail=str(e))
     repo.simpan_perubahan(kegiatan)
     repo.commit()
-    return kegiatan
+    return _kegiatan_response(kegiatan)
 
 
 @router.delete("/{mbkm_id}", status_code=204)
