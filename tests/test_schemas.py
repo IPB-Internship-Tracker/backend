@@ -11,9 +11,11 @@ from app.schemas import (
     LamaranCreate,
     LamaranStatusUpdate,
     LogbookCreate,
+    LombaCreate,
     MagangCreate,
     MahasiswaRegister,
     MitraRegister,
+    StudiIndependenCreate,
 )
 from app.domain.kegiatan import BidangMagang, DokumenLamaran, PenempatanMagang, TipeGaji
 from app.domain.lamaran import StatusLamaran
@@ -30,13 +32,14 @@ class TestMahasiswaRegister:
         nim="G6401231033",
         fakultas="Ilmu Komputer",
         program_studi="Ilmu Komputer",
-        angkatan=2023,
     )
 
     def test_valid(self):
         m = MahasiswaRegister(**self.VALID_DATA)
         assert m.email == "budi@apps.ipb.ac.id"
         assert m.nim == "G6401231033"
+        assert not hasattr(m, "foto_profile")
+        assert not hasattr(m, "angkatan")
 
     def test_email_lowercase_dan_nim_uppercase(self):
         data = {**self.VALID_DATA, "email": "Budi@APPS.IPB.AC.ID", "nim": "g6401231033"}
@@ -49,6 +52,8 @@ class TestMahasiswaRegister:
         "budi@yahoo.com",
         "budi@student.ipb.ac.id",  # domain lain
         "budi@ipb.ac.id",           # kurang "apps"
+        "budi@cs.apps.ipb.ac.id",   # subdomain tetap tidak boleh
+        "budi@apps.ipb.ac.id.evil.com",
     ])
     def test_email_selain_apps_ipb_ditolak(self, email_invalid):
         data = {**self.VALID_DATA, "email": email_invalid}
@@ -166,6 +171,59 @@ class TestMagangCreate:
         data = {**self.VALID_DATA, "gaji_perbulan": -100}
         with pytest.raises(ValidationError):
             MagangCreate(**data)
+
+
+class TestLombaCreate:
+    VALID_DATA = dict(
+        nama_kegiatan="Lomba UI UX",
+        deskripsi="Kompetisi desain produk digital nasional",
+        deadline_pendaftaran=date(2099, 6, 1),
+        tanggal_mulai=date(2099, 7, 1),
+        tanggal_selesai=date(2099, 7, 3),
+        bidang="Desain",
+        poster="https://example.com/poster-lomba.png",
+    )
+
+    def test_valid_tanpa_field_yang_tidak_dipakai(self):
+        lomba = LombaCreate(**self.VALID_DATA)
+
+        assert lomba.nama_kegiatan == "Lomba UI UX"
+        assert lomba.bidang == "Desain"
+        assert lomba.poster == "https://example.com/poster-lomba.png"
+        assert not hasattr(lomba, "narahubung")
+        assert not hasattr(lomba, "kuota")
+        assert not hasattr(lomba, "syarat_ketentuan")
+        assert not hasattr(lomba, "info_lebih_lanjut")
+        assert not hasattr(lomba, "tingkat_lomba")
+        assert not hasattr(lomba, "jenis_peserta")
+        assert not hasattr(lomba, "jumlah_anggota")
+        assert not hasattr(lomba, "hadiah")
+
+
+class TestStudiIndependenCreate:
+    VALID_DATA = dict(
+        nama_kegiatan="Studi Independen Backend",
+        deskripsi="Program belajar backend intensif",
+        deadline_pendaftaran=date(2099, 6, 1),
+        tanggal_mulai=date(2099, 7, 1),
+        tanggal_selesai=date(2099, 9, 1),
+        bidang="Backend",
+        poster="https://example.com/poster-studi.png",
+    )
+
+    def test_valid_tanpa_field_yang_tidak_dipakai(self):
+        studi = StudiIndependenCreate(**self.VALID_DATA)
+
+        assert studi.nama_kegiatan == "Studi Independen Backend"
+        assert studi.bidang == "Backend"
+        assert studi.poster == "https://example.com/poster-studi.png"
+        assert not hasattr(studi, "narahubung")
+        assert not hasattr(studi, "kuota")
+        assert not hasattr(studi, "syarat_ketentuan")
+        assert not hasattr(studi, "info_lebih_lanjut")
+        assert not hasattr(studi, "kurikulum")
+        assert not hasattr(studi, "metode_pembelajaran")
+        assert not hasattr(studi, "benefit")
 
 
 # =========================================================

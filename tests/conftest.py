@@ -75,7 +75,6 @@ MHS_PAYLOAD = {
     "nim": "G6401231033",
     "fakultas": "Ilmu Komputer",
     "program_studi": "Ilmu Komputer",
-    "angkatan": 2023,
 }
 
 MITRA_PAYLOAD = {

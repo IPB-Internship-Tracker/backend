@@ -28,10 +28,7 @@ from app.domain import (
     UserRole,
 )
 
-
-# =========================================================
 # User
-# =========================================================
 class TestUser:
     def test_role_mahasiswa(self):
         u = User(nama="A", email="a@apps.ipb.ac.id",
@@ -68,36 +65,73 @@ class TestUser:
 # Mahasiswa / Mitra profile update
 # =========================================================
 class TestMahasiswaProfil:
+    def test_mahasiswa_adalah_turunan_user(self):
+        m = Mahasiswa(
+            user_id=1,
+            nama="Budi",
+            email="budi@apps.ipb.ac.id",
+            password_hash="hash123",
+            nim="G6401231033",
+            fakultas="Ilkom",
+            program_studi="Ilkom",
+        )
+        assert isinstance(m, User)
+        assert m.role == UserRole.MAHASISWA
+        assert m.is_mahasiswa() is True
+        assert m.login("budi@apps.ipb.ac.id", "hash123") is True
+
     def test_perbarui_nama_saja(self):
         m = Mahasiswa(user_id=1, nama="Budi", nim="G6401231033",
-                      fakultas="Ilkom", program_studi="Ilkom", angkatan=2022)
+                      fakultas="Ilkom", program_studi="Ilkom")
         m.perbarui_profil(nama="Budi Baru")
         assert m.nama == "Budi Baru"
-        assert m.angkatan == 2022  # tidak berubah
+        assert m.program_studi == "Ilkom"  # tidak berubah
+        assert m.foto_profile is None
 
     def test_perbarui_multi_field(self):
         m = Mahasiswa(user_id=1, nama="Budi", nim="A2024001001",
-                      fakultas="Ilkom", program_studi="Ilkom", angkatan=2022)
-        m.perbarui_profil(fakultas="FMIPA", angkatan=2023)
+                      fakultas="Ilkom", program_studi="Ilkom")
+        m.perbarui_profil(
+            fakultas="FMIPA",
+            program_studi="Statistika",
+            foto_profile="https://example.com/budi.jpg",
+        )
         assert m.fakultas == "FMIPA"
-        assert m.angkatan == 2023
+        assert m.program_studi == "Statistika"
+        assert m.foto_profile == "https://example.com/budi.jpg"
         assert m.nama == "Budi"  # tetap
 
     def test_none_tidak_mengubah_apapun(self):
         m = Mahasiswa(user_id=1, nama="X", nim="B1999001234",
-                      fakultas="F", program_studi="P", angkatan=2023)
-        m.perbarui_profil(nama=None, angkatan=None)
+                      fakultas="F", program_studi="P")
+        m.perbarui_profil(nama=None, semester=None)
         assert m.nama == "X"
-        assert m.angkatan == 2023
+        assert m.semester == 1
 
     def test_update_profil_alias(self):
         m = Mahasiswa(user_id=1, nama="X", nim="B1999001234",
-                      fakultas="F", program_studi="P", angkatan=2023)
+                      fakultas="F", program_studi="P")
         m.update_profil(nama="X Baru")
         assert m.nama == "X Baru"
 
 
 class TestMitraProfil:
+    def test_mitra_adalah_turunan_user(self):
+        mitra = Mitra(
+            user_id=2,
+            nama="HR PT A",
+            email="hr@pta.co.id",
+            password_hash="hash123",
+            nama_instansi="PT A",
+            jenis_instansi="Swasta",
+            alamat="Jl. Lama",
+            kontak="08111",
+        )
+        assert isinstance(mitra, User)
+        assert mitra.role == UserRole.MITRA
+        assert mitra.is_mitra() is True
+        assert mitra.login("hr@pta.co.id", "hash123") is True
+
     def test_perbarui_alamat(self):
         mitra = Mitra(user_id=2, nama_instansi="PT A", jenis_instansi="Swasta",
                       alamat="Jl. Lama", kontak="08111")
@@ -115,14 +149,14 @@ class TestMitraProfil:
 # =========================================================
 # KegiatanMBKM state transition
 # =========================================================
-def _bikin_magang(status=StatusKegiatan.DIBUKA, deadline=None) -> Magang:
+def _bikin_magang(status=StatusKegiatan.REGISTRASI_DIBUKA, deadline=None) -> Magang:
     return Magang(
         mitra_id=1, nama_kegiatan="Magang X", deskripsi="...",
         kategori_mbkm=KategoriMBKM.MAGANG,
         deadline_pendaftaran=deadline or (date.today() + timedelta(days=30)),
         kuota=5, tanggal_mulai=date.today() + timedelta(days=60),
         tanggal_selesai=date.today() + timedelta(days=120),
-        syarat_ketentuan="IPK>3", status_kegiatan=status,
+        syarat_ketentuan="IPK>3", status=status,
         narahubung="HR IPB",
         info_lebih_lanjut="https://example.com/magang",
         bidang=BidangMagang.INFORMATION_TECHNOLOGY,
@@ -141,19 +175,26 @@ def _bikin_magang(status=StatusKegiatan.DIBUKA, deadline=None) -> Magang:
 class TestKegiatan:
     def test_default_status_dibuka(self):
         k = _bikin_magang()
-        assert k.status_kegiatan == StatusKegiatan.DIBUKA
+        assert k.status == StatusKegiatan.REGISTRASI_DIBUKA
         assert k.is_pendaftaran_dibuka() is True
+        assert k.status == "Registrasi Dibuka"
 
-    def test_tutup_pendaftaran_valid(self):
-        k = _bikin_magang(status=StatusKegiatan.DIBUKA)
+    def test_tutup_pendaftaran_menutup_status_manual(self):
+        k = _bikin_magang(status=StatusKegiatan.REGISTRASI_DIBUKA)
         k.tutup_pendaftaran()
-        assert k.status_kegiatan == StatusKegiatan.DITUTUP
+        assert k.status == StatusKegiatan.REGISTRASI_DITUTUP
         assert k.is_pendaftaran_dibuka() is False
 
-    def test_tutup_kegiatan_selesai_ditolak(self):
-        k = _bikin_magang(status=StatusKegiatan.SELESAI)
-        with pytest.raises(ForbiddenActionError, match="selesai"):
-            k.tutup_pendaftaran()
+    def test_status_manual_ditutup_tetap_dihormati(self):
+        k = _bikin_magang(status=StatusKegiatan.REGISTRASI_DITUTUP)
+        assert k.status == StatusKegiatan.REGISTRASI_DITUTUP
+        assert k.is_pendaftaran_dibuka() is False
+
+    def test_status_otomatis_ditutup_saat_deadline_lewat(self):
+        k = _bikin_magang(deadline=date(2020, 1, 1))
+        assert k.status == StatusKegiatan.REGISTRASI_DITUTUP
+        assert k.is_pendaftaran_dibuka() is False
+        assert k.status == "Registrasi Ditutup"
 
     def test_deadline_lewat(self):
         k_lewat = _bikin_magang(deadline=date(2020, 1, 1))
@@ -215,8 +256,7 @@ class TestPolimorfismeKegiatan:
             deadline_pendaftaran=deadline, kuota=1,
             tanggal_mulai=mulai, tanggal_selesai=selesai,
             syarat_ketentuan=".", narahubung="PIC",
-            info_lebih_lanjut="Info", bidang=".", tingkat_lomba=".",
-            jenis_peserta=".", jumlah_anggota=1, hadiah=".",
+            info_lebih_lanjut="Info", bidang=".", poster="poster.png",
         )
         studi = StudiIndependen(
             mitra_id=1, nama_kegiatan="S", deskripsi=".",
@@ -224,8 +264,7 @@ class TestPolimorfismeKegiatan:
             deadline_pendaftaran=deadline, kuota=1,
             tanggal_mulai=mulai, tanggal_selesai=selesai,
             syarat_ketentuan=".", narahubung="PIC",
-            info_lebih_lanjut="Info", kurikulum=".",
-            metode_pembelajaran=".", benefit=".",
+            info_lebih_lanjut="Info", bidang=".", poster="poster.png",
         )
         return [magang, lomba, studi]
 
@@ -233,7 +272,7 @@ class TestPolimorfismeKegiatan:
         for k in semua_jenis_kegiatan:
             assert k.is_pendaftaran_dibuka() is True
             assert k.dimiliki_oleh(1) is True
-            assert isinstance(k.status_kegiatan, StatusKegiatan)
+            assert isinstance(k.status, StatusKegiatan)
 
 
 # =========================================================
