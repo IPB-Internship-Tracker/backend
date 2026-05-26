@@ -11,7 +11,6 @@ class _MahasiswaBase(BaseModel):
     nim: str = Field(min_length=11, max_length=11, description="NIM IPB format: 1 huruf + 10 angka, contoh: G6401231033")
     fakultas: str = Field(min_length=2, max_length=100)
     program_studi: str = Field(min_length=2, max_length=100)
-    angkatan: int = Field(ge=2022, le=2026)
     semester: int = Field(default=1, ge=1, le=14)
 
 
@@ -53,15 +52,19 @@ class MahasiswaUpdate(BaseModel):
     nama: str | None = Field(default=None, min_length=2, max_length=150)
     fakultas: str | None = Field(default=None, min_length=2, max_length=100)
     program_studi: str | None = Field(default=None, min_length=2, max_length=100)
-    angkatan: int | None = Field(default=None, ge=2022, le=2026)
     semester: int | None = Field(default=None, ge=1, le=14)
+    foto_profile: str | None = Field(default=None, max_length=255)
 
 
-class MahasiswaResponse(_MahasiswaBase):
+class MahasiswaResponse(UserResponse):
     model_config = ConfigDict(from_attributes=True)
 
     mahasiswa_id: int
-    user_id: int
+    nim: str
+    fakultas: str
+    program_studi: str
+    semester: int
+    foto_profile: str | None = Field(default=None, max_length=255)
 
 
 class MahasiswaDetailResponse(MahasiswaResponse):
